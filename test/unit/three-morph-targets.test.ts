@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { LilToonMaterial } from "../../src/material/LilToonMaterial.js";
 import {
 	updateThreeMorphDefines,
+	MorphWeights,
 	withThreeMorphTargets,
 } from "../../src/renderer/threeMorphTargets.js";
 
@@ -65,9 +66,15 @@ describe("Three.js morph integration", () => {
 				"morphtarget_vertex",
 				"morphnormal_vertex",
 			] as const) {
-				expect(m.vertexShader).toContain(`#include <${name}>`);
 				expect(ShaderChunk[name]).toBeTruthy();
 			}
+			expect(m.vertexShader).toContain(
+				"uniform highp sampler2D mochiyaMorphWeights",
+			);
+			expect(m.vertexShader).not.toContain(
+				"uniform float morphTargetInfluences[",
+			);
+			expect(m.vertexShader).toContain("getMorph( gl_VertexID, i, 0 )");
 			expect(m.vertexShader).toContain(
 				"lilToonMain(vec4(transformed, position.w), objectNormal)",
 			);
@@ -82,6 +89,30 @@ describe("Three.js morph integration", () => {
 				Object.keys(m.globalUniforms).some((n) => n.startsWith("uMorph")),
 			).toBe(false);
 		}
+	});
+	it("uploads current weights without mutating controls, reuses stable data and disposes resized textures", () => {
+		const owner = new MorphWeights();
+		const mesh = new Mesh(geometry(648));
+		mesh.morphTargetInfluences![647] = -0.5;
+		owner.update(mesh, 256);
+		const texture = owner.uniform.value!;
+		expect(texture.image.width).toBe(256);
+		expect(texture.image.height).toBe(3);
+		expect(texture.image.data![647]).toBe(-0.5);
+		const version = texture.version;
+		owner.update(mesh, 256);
+		expect(texture.version).toBe(version);
+		mesh.morphTargetInfluences![647] = 1.25;
+		owner.update(mesh, 256);
+		expect(texture.image.data![647]).toBe(1.25);
+		expect(texture.version).toBeGreaterThan(version);
+		let disposed = 0;
+		texture.addEventListener("dispose", () => disposed++);
+		owner.update(new Mesh(geometry(2)), 256);
+		expect(disposed).toBe(1);
+		expect(mesh.morphTargetInfluences![647]).toBe(1.25);
+		owner.dispose();
+		expect(owner.uniform.value).toBeNull();
 	});
 	it("detects a changed compiled vertex interface instead of silently omitting morphs", () => {
 		expect(() => withThreeMorphTargets("void main() {}")).toThrow(

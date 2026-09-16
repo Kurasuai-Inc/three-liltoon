@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-test("high-index and 526 active GPU morphs match baked Three.js geometry, skinning and outlines", async ({
+test("high-index and 648 active GPU morphs match baked Three.js geometry, skinning and outlines", async ({
 	page,
 }) => {
 	const errors: string[] = [];
@@ -29,7 +29,7 @@ test("high-index and 526 active GPU morphs match baked Three.js geometry, skinni
 	expect(errors).toEqual([]);
 });
 
-test("reuses Three.js GPU morph textures and uniforms across materials and releases them with geometry", async ({
+test("reuses Three.js GPU morph displacement textures and adapts weights across materials and releases them with geometry", async ({
 	page,
 }) => {
 	const errors: string[] = [];
@@ -49,6 +49,9 @@ test("reuses Three.js GPU morph textures and uniforms across materials and relea
 	for (const capture of result.captures) {
 		expect(capture.sharedTexture, String(capture.count)).toBe(true);
 		expect(capture.weight).toBeCloseTo(0.75);
+		expect(capture.usesWeightTexture).toBe(true);
+		expect(capture.usesWeightUniformArray).toBe(false);
+		expect(capture.uniformVectorsUpperBound).toBeLessThan(1024);
 		expect(capture.disposed).toBe(true);
 	}
 	expect(result.staticReset).toBe(true);

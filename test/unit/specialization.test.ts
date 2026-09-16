@@ -264,7 +264,7 @@ describe("material specialization", () => {
 				{ vertex: 1, fragment: 16, combined: 32 },
 				true,
 			),
-		).toThrow("vertex 2/1");
+		).toThrow("vertex 3/1");
 		expect(() =>
 			assertTextureLimits(
 				"Face",
@@ -280,7 +280,7 @@ describe("material specialization", () => {
 				{ vertex: 16, fragment: 16, combined: 17 },
 				true,
 			),
-		).toThrow("combined 18/17");
+		).toThrow("combined 19/17");
 		expect(() =>
 			assertTextureLimits(
 				"Face",

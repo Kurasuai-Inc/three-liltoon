@@ -14,7 +14,8 @@ export function assertTextureLimits(
 ): void {
 	const vertex =
 		new Set(resources.filter((r) => r.stage === "vertex").map((r) => r.uniform))
-			.size + Number(morph);
+			.size +
+		2 * Number(morph);
 	const fragment = new Set(
 		resources.filter((r) => r.stage === "fragment").map((r) => r.uniform),
 	).size;

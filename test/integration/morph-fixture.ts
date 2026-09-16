@@ -16,9 +16,15 @@ import {
 	WebGLRenderTarget,
 } from "three";
 import { LilToonMaterial, enableLilToon } from "../../src/index.js";
+import {
+	VRMExpression,
+	VRMExpressionManager,
+	VRMExpressionMorphTargetBind,
+} from "@pixiv/three-vrm";
 
 export function verifyMorphRendering() {
 	const renderer = new WebGLRenderer({ antialias: false });
+	renderer.shadowMap.enabled = true;
 	renderer.setSize(128, 128);
 	const release = enableLilToon(renderer);
 	const target = new WebGLRenderTarget(128, 128);
@@ -28,11 +34,14 @@ export function verifyMorphRendering() {
 	camera.position.z = 3;
 	const light = new DirectionalLight(0xffffff, 1.5);
 	light.position.set(1, 2, 3);
+	light.castShadow = true;
+	light.shadow.mapSize.set(64, 64);
 	scene.add(light, new AmbientLight(0xffffff, 0.25));
 	const material = new LilToonMaterial({
 		properties: { _Color: [0.7, 0.2, 0.4, 1], _UseShadow: 0 },
 	});
 	const pixels = (mesh: Mesh) => {
+		mesh.castShadow = true;
 		scene.add(mesh);
 		renderer.render(scene, camera);
 		const result = new Uint8Array(128 * 128 * 4);
@@ -60,16 +69,16 @@ export function verifyMorphRendering() {
 				for (const channel of ["position", "normal"] as const) {
 					const base = geometry.attributes[channel];
 					geometry.morphAttributes[channel] = Array.from(
-						{ length: 526 },
+						{ length: 648 },
 						(_, i) => {
 							const data = new Float32Array(n * 3);
 							for (let v = 0; v < n; v++) {
 								data[v * 3] =
 									(relative ? 0 : base.getX(v)) +
-									(i === 69 ? 0.18 : i === 525 ? -0.07 : 0.002);
+									(i === 69 ? 0.18 : i === 647 ? -0.07 : 0.002);
 								data[v * 3 + 1] =
 									(relative ? 0 : base.getY(v)) +
-									(channel === "position" ? (i === 525 ? 0.16 : 0) : 0.01);
+									(channel === "position" ? (i === 647 ? 0.16 : 0) : 0.01);
 								data[v * 3 + 2] = relative ? 0 : base.getZ(v);
 							}
 							return new Float32BufferAttribute(data, 3);
@@ -97,7 +106,7 @@ export function verifyMorphRendering() {
 				} else mesh = new Mesh(geometry, material);
 				mesh.morphTargetInfluences!.fill(manyActive ? 0.015 : 0);
 				mesh.morphTargetInfluences![69] = 1.25;
-				mesh.morphTargetInfluences![525] = -0.5;
+				mesh.morphTargetInfluences![647] = -0.5;
 				const baked = geometry.clone();
 				baked.morphAttributes = {};
 				for (let vertex = 0; vertex < n; vertex++) {
@@ -140,6 +149,66 @@ export function verifyMorphRendering() {
 				geometry.dispose();
 				baked.dispose();
 			}
+	// Shared geometry/material must still receive each mesh's final expression
+	// weights. Compare against independent materials across changing frames.
+	material.setProperty("_UseOutline", 0);
+	const sharedGeometry = new PlaneGeometry(0.4, 0.4);
+	sharedGeometry.morphTargetsRelative = true;
+	sharedGeometry.morphAttributes.position = Array.from(
+		{ length: 648 },
+		(_, i) =>
+			new Float32BufferAttribute(
+				new Float32Array([
+					0,
+					i === 647 ? 0.3 : 0,
+					0,
+					0,
+					i === 647 ? 0.3 : 0,
+					0,
+					0,
+					i === 647 ? 0.3 : 0,
+					0,
+					0,
+					i === 647 ? 0.3 : 0,
+					0,
+				]),
+				3,
+			),
+	);
+	const left = new Mesh(sharedGeometry, material),
+		right = new Mesh(sharedGeometry, material);
+	left.position.x = -0.4;
+	right.position.x = 0.4;
+	const manager = new VRMExpressionManager(),
+		expression = new VRMExpression("custom");
+	expression.addBind(
+		new VRMExpressionMorphTargetBind({
+			primitives: [left],
+			index: 647,
+			weight: 1,
+		}),
+	);
+	manager.registerExpression(expression);
+	const independent = material.clone();
+	scene.add(left, right);
+	const capture = () => {
+		renderer.render(scene, camera);
+		const data = new Uint8Array(128 * 128 * 4);
+		renderer.readRenderTargetPixels(target, 0, 0, 128, 128, data);
+		return data;
+	};
+	for (const weight of [0.75, 0.25, 1]) {
+		manager.setValue("custom", weight);
+		manager.update();
+		right.morphTargetInfluences![647] = -weight;
+		right.material = material;
+		const shared = capture();
+		right.material = independent;
+		checks[`shared-expression/${weight}`] = difference(shared, capture());
+	}
+	scene.remove(left, right);
+	sharedGeometry.dispose();
+	independent.dispose();
 	const glError = renderer.getContext().getError();
 	target.dispose();
 	material.dispose();
@@ -165,10 +234,13 @@ export async function verifyThreeMorphOwnership() {
 	const captures: {
 		count: number;
 		sharedTexture: boolean;
+		usesWeightTexture: boolean;
+		usesWeightUniformArray: boolean;
+		uniformVectorsUpperBound: number;
 		weight: number;
 		disposed: boolean;
 	}[] = [];
-	for (const count of [1, 64, 65, 526, 69]) {
+	for (const count of [1, 64, 65, 648, 69]) {
 		const geometry = new PlaneGeometry(1, 1);
 		geometry.morphTargetsRelative = true;
 		geometry.morphAttributes.position = Array.from(
@@ -179,6 +251,25 @@ export async function verifyThreeMorphOwnership() {
 		scene.add(mesh);
 		const binding = () => {
 			const program = gl.getParameter(gl.CURRENT_PROGRAM) as WebGLProgram;
+			// Count all linked uniforms (both stages), conservatively giving every
+			// scalar/vec array element a vector slot. This bounds vertex usage.
+			let uniformVectorsUpperBound = 0;
+			for (
+				let i = 0;
+				i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+				i++
+			) {
+				const u = gl.getActiveUniform(program, i)!;
+				const columns =
+					u.type === gl.FLOAT_MAT4
+						? 4
+						: u.type === gl.FLOAT_MAT3
+							? 3
+							: u.type === gl.FLOAT_MAT2
+								? 2
+								: 1;
+				uniformVectorsUpperBound += u.size * columns;
+			}
 			const unit = gl.getUniform(
 				program,
 				gl.getUniformLocation(program, "morphTargetsTexture")!,
@@ -190,14 +281,18 @@ export async function verifyThreeMorphOwnership() {
 			) as WebGLTexture;
 			gl.activeTexture(active);
 			return {
+				uniformVectorsUpperBound,
 				texture,
-				weight: gl.getUniform(
-					program,
-					gl.getUniformLocation(
-						program,
-						`morphTargetInfluences[${count - 1}]`,
-					)!,
-				) as number,
+				weight:
+					mesh.material === material
+						? (material.uniforms.mochiyaMorphWeights.value.image.data[
+								count - 1
+							] as number)
+						: 0,
+				usesWeightTexture:
+					gl.getUniformLocation(program, "mochiyaMorphWeights") !== null,
+				usesWeightUniformArray:
+					gl.getUniformLocation(program, "morphTargetInfluences[0]") !== null,
 			};
 		};
 		mesh.morphTargetInfluences!.fill(0.2);
@@ -214,6 +309,9 @@ export async function verifyThreeMorphOwnership() {
 			count,
 			sharedTexture: first.texture !== null && first.texture === second.texture,
 			weight: second.weight,
+			usesWeightTexture: second.usesWeightTexture,
+			usesWeightUniformArray: second.usesWeightUniformArray,
+			uniformVectorsUpperBound: second.uniformVectorsUpperBound,
 			disposed: !gl.isTexture(first.texture),
 		});
 	}

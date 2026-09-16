@@ -1,4 +1,4 @@
-import { Vector3, Matrix4, Vector2, CubeTexture, Vector4, Color, AmbientLight, HemisphereLight, RawShaderMaterial, GLSL3, SRGBColorSpace, DirectionalLight, DataTexture, RGBAFormat, UnsignedByteType, RepeatWrapping, LinearFilter, CustomBlending, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, ClampToEdgeWrapping, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, FrontSide, BackSide, DoubleSide, LessEqualDepth, AlwaysDepth, GreaterEqualDepth, NotEqualDepth, GreaterDepth, EqualDepth, LessDepth, NeverDepth, SrcAlphaFactor, OneMinusSrcAlphaFactor, SrcAlphaSaturateFactor, OneMinusDstAlphaFactor, DstAlphaFactor, OneMinusSrcColorFactor, OneMinusDstColorFactor, SrcColorFactor, DstColorFactor, OneFactor, ZeroFactor, AddEquation, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, AlwaysStencilFunc, GreaterEqualStencilFunc, NotEqualStencilFunc, GreaterStencilFunc, LessEqualStencilFunc, EqualStencilFunc, LessStencilFunc, NeverStencilFunc, KeepStencilOp, DecrementWrapStencilOp, IncrementWrapStencilOp, InvertStencilOp, DecrementStencilOp, IncrementStencilOp, ReplaceStencilOp, ZeroStencilOp } from 'three';
+import { Vector3, Matrix4, Vector2, CubeTexture, Vector4, Color, AmbientLight, HemisphereLight, RawShaderMaterial, GLSL3, SRGBColorSpace, DirectionalLight, DataTexture, RGBAFormat, UnsignedByteType, RepeatWrapping, LinearFilter, CustomBlending, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, RedFormat, FloatType, ClampToEdgeWrapping, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, ShaderChunk, FrontSide, BackSide, DoubleSide, LessEqualDepth, AlwaysDepth, GreaterEqualDepth, NotEqualDepth, GreaterDepth, EqualDepth, LessDepth, NeverDepth, SrcAlphaFactor, OneMinusSrcAlphaFactor, SrcAlphaSaturateFactor, OneMinusDstAlphaFactor, DstAlphaFactor, OneMinusSrcColorFactor, OneMinusDstColorFactor, SrcColorFactor, DstColorFactor, OneFactor, ZeroFactor, AddEquation, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, AlwaysStencilFunc, GreaterEqualStencilFunc, NotEqualStencilFunc, GreaterStencilFunc, LessEqualStencilFunc, EqualStencilFunc, LessStencilFunc, NeverStencilFunc, KeepStencilOp, DecrementWrapStencilOp, IncrementWrapStencilOp, InvertStencilOp, DecrementStencilOp, IncrementStencilOp, ReplaceStencilOp, ZeroStencilOp } from 'three';
 
 // src/generated/defaults.ts
 var LILTOON_DEFAULTS = {
@@ -1602,7 +1602,7 @@ function textureBindingKey(resource, textures) {
 // src/renderer/textureLimits.ts
 var limits = /* @__PURE__ */ new WeakMap();
 function assertTextureLimits(name, resources, limit, morph = false) {
-  const vertex = new Set(resources.filter((r) => r.stage === "vertex").map((r) => r.uniform)).size + Number(morph);
+  const vertex = new Set(resources.filter((r) => r.stage === "vertex").map((r) => r.uniform)).size + 2 * Number(morph);
   const fragment = new Set(
     resources.filter((r) => r.stage === "fragment").map((r) => r.uniform)
   ).size;
@@ -1843,21 +1843,79 @@ var RendererContext = class {
     );
   }
 };
-
-// src/renderer/threeMorphTargets.ts
+var MorphWeights = class {
+  uniform = { value: null };
+  update(mesh, maxTextureSize) {
+    const count = (mesh.geometry.morphAttributes.position || mesh.geometry.morphAttributes.normal)?.length ?? 0;
+    if (!count) return;
+    const width = Math.min(count, maxTextureSize);
+    const height = Math.ceil(count / width);
+    if (height > maxTextureSize)
+      throw new Error(
+        "[three-liltoon] Morph weights exceed this device's texture size limit."
+      );
+    let texture = this.uniform.value;
+    if (!texture || texture.image.width !== width || texture.image.height !== height) {
+      this.dispose();
+      texture = new DataTexture(
+        new Float32Array(width * height),
+        width,
+        height,
+        RedFormat,
+        FloatType
+      );
+      texture.name = "three-liltoon morph weights";
+      this.uniform.value = texture;
+    }
+    const data = texture.image.data;
+    let changed = texture.version === 0;
+    for (let i = 0; i < count; i++) {
+      const value = Math.fround(mesh.morphTargetInfluences?.[i] ?? 0);
+      if (data[i] !== value) {
+        data[i] = value;
+        changed = true;
+      }
+    }
+    if (changed) texture.needsUpdate = true;
+  }
+  dispose() {
+    this.uniform.value?.dispose();
+    this.uniform.value = null;
+  }
+};
+function morphChunks(source) {
+  const declaration = /uniform float morphTargetInfluences\[\s*MORPHTARGETS_COUNT\s*\];/;
+  if (!declaration.test(ShaderChunk.morphtarget_pars_vertex))
+    throw new Error(
+      "[three-liltoon] Unsupported Three.js morph weight declaration."
+    );
+  return source.replace(
+    "#include <morphtarget_pars_vertex>",
+    ShaderChunk.morphtarget_pars_vertex.replace(
+      declaration,
+      `
+uniform highp sampler2D mochiyaMorphWeights;
+float mochiyaMorphWeight(int index) {
+	int width = textureSize(mochiyaMorphWeights, 0).x;
+	return texelFetch(mochiyaMorphWeights, ivec2(index % width, index / width), 0).r;
+}`
+    )
+  ).replace("#include <morphnormal_vertex>", ShaderChunk.morphnormal_vertex).replace("#include <morphtarget_vertex>", ShaderChunk.morphtarget_vertex).replace(/morphTargetInfluences\[\s*i\s*\]/g, "mochiyaMorphWeight(i)");
+}
 function withThreeMorphTargets(source) {
   if (!source.includes("void main()") || !source.includes("in vec4 position;")) {
     throw new Error(
       "[three-liltoon] Compiled vertex entry no longer matches the Three.js morph integration."
     );
   }
-  return source.replace(
-    "void main()",
-    `
+  return morphChunks(
+    source.replace(
+      "void main()",
+      `
 precision highp sampler2DArray;
 #include <morphtarget_pars_vertex>
 void lilToonMain(vec4 position, vec3 normal)`
-  ) + `
+    ) + `
 void main() {
 	vec3 transformed = position.xyz;
 	vec3 objectNormal = ${source.includes("in vec3 normal;") ? "normal" : "vec3(0.0, 0.0, 1.0)"};
@@ -1865,7 +1923,8 @@ void main() {
 	#include <morphtarget_vertex>
 	lilToonMain(vec4(transformed, position.w), objectNormal);
 }
-`;
+`
+  );
 }
 function updateThreeMorphDefines(material, geometry) {
   const morph = geometry.morphAttributes;
@@ -6804,6 +6863,7 @@ var LilToonMaterial = class extends RawShaderMaterial {
   #shaderKey;
   #program;
   #textureViews = new TextureViews();
+  #morphWeights = new MorphWeights();
   #usedProperties;
   #startedAt = performance.now();
   constructor(parameters = {}) {
@@ -6859,6 +6919,7 @@ ${program.fragmentShader}`.matchAll(
     this.transparencyMode = parameters.transparencyMode ?? "normal";
     this.forceSinglePass = true;
     this.globalUniforms = globalUniforms;
+    this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
     this.#samplerBindings = program.samplerBindings;
     this.#cubeSamplers = cubeSamplers;
     this.#shaderKey = program.key;
@@ -7054,6 +7115,7 @@ ${program.fragmentShader}`.matchAll(
     }
   }
   dispose() {
+    this.#morphWeights.dispose();
     this.#textureViews.dispose();
     super.dispose();
   }
@@ -7065,6 +7127,8 @@ ${program.fragmentShader}`.matchAll(
     for (const key of Object.keys(uniforms)) delete uniforms[key];
     Object.assign(uniforms, copiedUniforms);
     this.uniforms = uniforms;
+    this.#morphWeights.dispose();
+    this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
     this.renderMode = source.renderMode;
     this.pass = source.pass;
     this.transparencyMode = source.transparencyMode;
@@ -7149,6 +7213,7 @@ ${program.fragmentShader}`.matchAll(
     for (const name of Object.keys(this.uniforms)) delete this.uniforms[name];
     this.uniforms._Globals = { value: this.globalUniforms };
     this.uniforms[OUTPUT_SRGB_UNIFORM] = { value: 1 };
+    this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
     this.#samplerBindings.clear();
     this.#cubeSamplers.clear();
     for (const match of `${program.vertexShader}
@@ -7199,8 +7264,16 @@ ${program.fragmentShader}`.matchAll(
     const bindMatrixInverse = this.globalUniforms.uBindMatrixInverse;
     if (bindMatrixInverse instanceof Matrix4 && skinned.bindMatrixInverse)
       bindMatrixInverse.copy(skinned.bindMatrixInverse).transpose();
-    if (object.isMesh)
+    if (object.isMesh) {
       updateThreeMorphDefines(this, object.geometry);
+      if (this.pass !== "fur" && this.pass !== "fur-pre" && Number(this.defines.MORPHTARGETS_COUNT) > 0) {
+        this.#morphWeights.update(
+          object,
+          renderer.capabilities.maxTextureSize
+        );
+        this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
+      }
+    }
   }
 };
 

@@ -33,6 +33,7 @@ import {
 } from "../renderer/LilToonUniformBinder.js";
 import { rendererContext } from "../renderer/rendererContext.js";
 import {
+	MorphWeights,
 	updateThreeMorphDefines,
 	withThreeMorphTargets,
 } from "../renderer/threeMorphTargets.js";
@@ -137,6 +138,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 	#shaderKey: string;
 	#program: LilToonShaderProgram;
 	readonly #textureViews = new TextureViews();
+	readonly #morphWeights = new MorphWeights();
 	#usedProperties: ReadonlySet<string>;
 	readonly #startedAt = performance.now();
 
@@ -203,6 +205,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.transparencyMode = parameters.transparencyMode ?? "normal";
 		this.forceSinglePass = true;
 		this.globalUniforms = globalUniforms;
+		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.#samplerBindings = program.samplerBindings;
 		this.#cubeSamplers = cubeSamplers;
 		this.#shaderKey = program.key;
@@ -447,6 +450,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 	}
 
 	override dispose(): void {
+		this.#morphWeights.dispose();
 		this.#textureViews.dispose();
 		super.dispose();
 	}
@@ -459,6 +463,8 @@ export class LilToonMaterial extends RawShaderMaterial {
 		for (const key of Object.keys(uniforms)) delete uniforms[key];
 		Object.assign(uniforms, copiedUniforms);
 		this.uniforms = uniforms;
+		this.#morphWeights.dispose();
+		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.renderMode = source.renderMode;
 		this.pass = source.pass;
 		this.transparencyMode = source.transparencyMode;
@@ -563,6 +569,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		for (const name of Object.keys(this.uniforms)) delete this.uniforms[name];
 		this.uniforms._Globals = { value: this.globalUniforms };
 		this.uniforms[OUTPUT_SRGB_UNIFORM] = { value: 1 };
+		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.#samplerBindings.clear();
 		this.#cubeSamplers.clear();
 		for (const match of `${program.vertexShader}\n${program.fragmentShader}`.matchAll(
@@ -637,7 +644,19 @@ export class LilToonMaterial extends RawShaderMaterial {
 		const bindMatrixInverse = this.globalUniforms.uBindMatrixInverse;
 		if (bindMatrixInverse instanceof Matrix4 && skinned.bindMatrixInverse)
 			bindMatrixInverse.copy(skinned.bindMatrixInverse).transpose();
-		if ((object as { isMesh?: boolean }).isMesh)
+		if ((object as { isMesh?: boolean }).isMesh) {
 			updateThreeMorphDefines(this, (object as Mesh).geometry);
+			if (
+				this.pass !== "fur" &&
+				this.pass !== "fur-pre" &&
+				Number(this.defines.MORPHTARGETS_COUNT) > 0
+			) {
+				this.#morphWeights.update(
+					object as Mesh,
+					renderer.capabilities.maxTextureSize,
+				);
+				this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
+			}
+		}
 	}
 }

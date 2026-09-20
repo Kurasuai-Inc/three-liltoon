@@ -1,5 +1,5 @@
 import {
-	BufferGeometry,
+	type BufferGeometry,
 	Mesh,
 	SkinnedMesh,
 	Scene,
@@ -36,7 +36,7 @@ export function syncPassMaterial(
 	);
 }
 
-/** Cached, deformed view of one draw group. Never owns the caller's vertex buffers. */
+/** Cached pass proxy. Borrows source geometry, including Three's morph texture. */
 export class AuxiliaryPassDraw {
 	private recipes = new Map<
 		string,
@@ -92,7 +92,7 @@ export class AuxiliaryPassDraw {
 			r = undefined;
 		}
 		if (!r) {
-			const geometry = new BufferGeometry(),
+			const geometry = mesh.geometry,
 				sourceGeometry = mesh.geometry;
 			const material = new LilToonMaterial({
 				renderMode: source.renderMode,
@@ -110,10 +110,6 @@ export class AuxiliaryPassDraw {
 			const release = () => {
 				source.removeEventListener("dispose", release);
 				sourceGeometry.removeEventListener("dispose", release);
-				geometry.attributes = {};
-				geometry.index = null;
-				geometry.morphAttributes = {};
-				geometry.dispose();
 				material.dispose();
 				this.recipes.delete(key);
 			};
@@ -137,21 +133,14 @@ export class AuxiliaryPassDraw {
 		r.owner = scene;
 		const { geometry, material, proxy } = r;
 		syncPassMaterial(source, material);
-		geometry.attributes = mesh.geometry.attributes;
-		geometry.index = mesh.geometry.index;
-		geometry.morphAttributes = mesh.geometry.morphAttributes;
-		geometry.morphTargetsRelative = mesh.geometry.morphTargetsRelative;
-		const range = mesh.geometry.drawRange,
-			start = Math.max(range.start, group?.start ?? 0);
-		geometry.setDrawRange(
-			start,
-			Math.max(
-				0,
-				Math.min(
-					range.start + range.count,
-					group ? group.start + group.count : Infinity,
-				) - start,
-			),
+		const { start: originalStart, count: originalCount } = geometry.drawRange;
+		const start = Math.max(originalStart, group?.start ?? 0);
+		const count = Math.max(
+			0,
+			Math.min(
+				originalStart + originalCount,
+				group ? group.start + group.count : Infinity,
+			) - start,
 		);
 		proxy.matrix.copy(mesh.matrixWorld);
 		proxy.layers.mask = mesh.layers.mask;
@@ -188,8 +177,11 @@ export class AuxiliaryPassDraw {
 			renderer.info.autoReset = false;
 			renderer.shadowMap.autoUpdate = false;
 			renderer.shadowMap.needsUpdate = false;
+			// A single-material proxy ignores source groups; narrow only this nested draw.
+			geometry.setDrawRange(start, count);
 			render.call(renderer, r.scene, camera);
 		} finally {
+			geometry.setDrawRange(originalStart, originalCount);
 			material.onBeforeRender = before;
 			renderer.autoClear = auto;
 			renderer.info.autoReset = info;

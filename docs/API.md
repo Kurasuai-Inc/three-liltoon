@@ -13,6 +13,8 @@ Start with the [README tutorials](../README.md).
 
 Only `/vrm` requires the optional Three-VRM peer. React Three Fiber is a host integration, not a package dependency.
 
+The root entry also exports `LILTOON_TEXTURE_SEMANTICS` and `LilToonTextureSemantic`: generated property-name metadata identifying `color`, `normal`, and `data` texture slots. Hosts can use this when selecting image-processing policies; lookup textures and images shared across incompatible uses still need conservative handling.
+
 ## Materials
 
 `LilToonMaterial` extends Three.js `RawShaderMaterial`. Constructor inputs include `name`, `color`, `opacity`, `map`, `alphaTest`, `renderMode`, `transparencyMode`, `properties` and `textures`. Original property names are case-sensitive. Render mode defaults to opaque; transparent configuration defaults to normal. See [rendering modes](RENDERING_MODES.md) for valid values and authored render-state defaults.

@@ -23,9 +23,12 @@ export function verifyTransparency() {
 	scene.background = new Color(0.1, 0.2, 0.4);
 	const calls: { pass: string; side: number; depth: boolean; key: string }[] =
 		[];
+	let sharedGeometry = true;
 	const direct = renderer.renderBufferDirect;
 	renderer.renderBufferDirect = function (...args) {
 		const m = args[3];
+		if (m instanceof LilToonMaterial && args[2] !== geometry)
+			sharedGeometry = false;
 		if (m instanceof LilToonMaterial)
 			calls.push({
 				pass: m.pass,
@@ -122,6 +125,7 @@ export function verifyTransparency() {
 	black.dispose();
 	release();
 	results.remainingTextures = renderer.info.memory.textures;
+	results.sharedGeometry = sharedGeometry;
 	renderer.dispose();
 	return results;
 }

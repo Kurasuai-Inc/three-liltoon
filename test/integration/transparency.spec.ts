@@ -43,5 +43,6 @@ test("Unity transparency sequences retain pass state, morphs, groups and outline
 	expect(result.maskDifference).toBe(0);
 	expect(result.restored).toBe(true);
 	expect(result.glError).toBe(0);
+	expect(result.sharedGeometry).toBe(true);
 	expect(result.remainingTextures).toBe(0);
 });

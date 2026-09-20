@@ -1,4 +1,4 @@
-import { LilToonMaterial, warnLilToon } from './chunk-IF6KKQHB.js';
+import { LilToonMaterial, warnLilToon } from './chunk-A4BIABDA.js';
 import { Loader, FileLoader } from 'three';
 
 // src/material/LilToonMaterialFactory.ts

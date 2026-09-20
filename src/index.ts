@@ -36,3 +36,7 @@ export {
 	LILTOON_UPSTREAM_VERSION,
 	THREE_VERSION_RANGE,
 } from "./generated/compatibility.js";
+export {
+	LILTOON_TEXTURE_SEMANTICS,
+	type LilToonTextureSemantic,
+} from "./generated/textureSemantics.js";

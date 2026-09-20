@@ -1,5 +1,6 @@
 import type { BufferGeometry, Mesh } from "three";
 import type { LilToonMaterial } from "../material/LilToonMaterial.js";
+import { generateIndexedTangents } from "./indexedTangents.js";
 
 function materialNeedsTangents(material: LilToonMaterial): boolean {
 	const features = material.featureSet;
@@ -49,14 +50,12 @@ export async function ensureLilToonTangents(
 
 	if (geometries.size === 0) return;
 
-	const [bufferGeometryUtils, MikkTSpace] = await Promise.all([
-		import("three/examples/jsm/utils/BufferGeometryUtils.js"),
-		import("three/examples/jsm/libs/mikktspace.module.js"),
-	]);
+	const MikkTSpace =
+		await import("three/examples/jsm/libs/mikktspace.module.js");
 	await MikkTSpace.ready;
 
 	for (const geometry of geometries) {
 		// The default sign negation is required by glTF's normal-map convention.
-		bufferGeometryUtils.computeMikkTSpaceTangents(geometry, MikkTSpace);
+		generateIndexedTangents(geometry, MikkTSpace);
 	}
 }

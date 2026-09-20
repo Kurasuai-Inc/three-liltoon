@@ -1,6 +1,6 @@
-export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-WE4UM4W4.js';
-import { LilToonMaterial, setGlobalProperty, applyLilToonPassState } from './chunk-IF6KKQHB.js';
-export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-IF6KKQHB.js';
+export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-F6TSGO5L.js';
+import { LilToonMaterial, setGlobalProperty, applyLilToonPassState } from './chunk-A4BIABDA.js';
+export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-A4BIABDA.js';
 import { MeshBasicMaterial, MeshDepthMaterial, RGBADepthPacking, MeshDistanceMaterial, SkinnedMesh, Mesh, OneFactor, ZeroFactor, CustomBlending, BufferGeometry, Scene, Vector4, SRGBColorSpace, HalfFloatType, FloatType, Vector2, NoColorSpace, UnsignedByteType, FramebufferTexture, DataTexture, RGBAFormat, Float32BufferAttribute, Uint32BufferAttribute, Vector3, Matrix4, WebGLRenderTarget, NearestFilter, RawShaderMaterial, GLSL3, PlaneGeometry } from 'three';
 
 // src/renderer/passOwnership.ts
@@ -53,7 +53,7 @@ var AuxiliaryPassDraw = class {
       r = void 0;
     }
     if (!r) {
-      const geometry2 = new BufferGeometry(), sourceGeometry = mesh.geometry;
+      const geometry2 = mesh.geometry, sourceGeometry = mesh.geometry;
       const material2 = new LilToonMaterial({
         renderMode: source.renderMode,
         pass,
@@ -68,10 +68,6 @@ var AuxiliaryPassDraw = class {
       const release = () => {
         source.removeEventListener("dispose", release);
         sourceGeometry.removeEventListener("dispose", release);
-        geometry2.attributes = {};
-        geometry2.index = null;
-        geometry2.morphAttributes = {};
-        geometry2.dispose();
         material2.dispose();
         this.recipes.delete(key);
       };
@@ -95,20 +91,14 @@ var AuxiliaryPassDraw = class {
     r.owner = scene;
     const { geometry, material, proxy } = r;
     syncPassMaterial(source, material);
-    geometry.attributes = mesh.geometry.attributes;
-    geometry.index = mesh.geometry.index;
-    geometry.morphAttributes = mesh.geometry.morphAttributes;
-    geometry.morphTargetsRelative = mesh.geometry.morphTargetsRelative;
-    const range = mesh.geometry.drawRange, start = Math.max(range.start, group?.start ?? 0);
-    geometry.setDrawRange(
-      start,
-      Math.max(
-        0,
-        Math.min(
-          range.start + range.count,
-          group ? group.start + group.count : Infinity
-        ) - start
-      )
+    const { start: originalStart, count: originalCount } = geometry.drawRange;
+    const start = Math.max(originalStart, group?.start ?? 0);
+    const count = Math.max(
+      0,
+      Math.min(
+        originalStart + originalCount,
+        group ? group.start + group.count : Infinity
+      ) - start
     );
     proxy.matrix.copy(mesh.matrixWorld);
     proxy.layers.mask = mesh.layers.mask;
@@ -132,8 +122,10 @@ var AuxiliaryPassDraw = class {
       renderer.info.autoReset = false;
       renderer.shadowMap.autoUpdate = false;
       renderer.shadowMap.needsUpdate = false;
+      geometry.setDrawRange(start, count);
       render.call(renderer, r.scene, camera);
     } finally {
+      geometry.setDrawRange(originalStart, originalCount);
       material.onBeforeRender = before;
       renderer.autoClear = auto;
       renderer.info.autoReset = info;

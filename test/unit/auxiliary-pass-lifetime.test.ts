@@ -36,13 +36,22 @@ describe("auxiliary pass lifetime", () => {
 				setScissorTest: vi.fn(),
 			} as unknown as WebGLRenderer;
 			let auxiliary: Mesh | undefined;
+			let fail = false;
+			mesh.geometry.setDrawRange(1, 4);
 			const render: WebGLRenderer["render"] = (current) => {
 				auxiliary = current.children[0] as Mesh;
+				expect(auxiliary.geometry).toBe(mesh.geometry);
+				expect(auxiliary.geometry.drawRange).toEqual({ start: 2, count: 3 });
+				if (fail) throw new Error("draw failed");
 			};
 			const draw = () => {
 				draws.begin();
-				draws.draw(renderer, render, mesh, source, pass, scene, camera, null);
+				draws.draw(renderer, render, mesh, source, pass, scene, camera, {
+					start: 2,
+					count: 4,
+				});
 				draws.end();
+				expect(mesh.geometry.drawRange).toEqual({ start: 1, count: 4 });
 			};
 			draw();
 			const first = auxiliary!,
@@ -62,8 +71,15 @@ describe("auxiliary pass lifetime", () => {
 			draws.begin();
 			draws.end();
 			expect(disposed).toHaveBeenCalledOnce();
-			expect(geometryDisposed).toHaveBeenCalledOnce();
+			expect(geometryDisposed).not.toHaveBeenCalled();
+			expect(first.geometry).toBe(mesh.geometry);
 			expect(mesh.geometry.attributes.position.count).toBe(4);
+			mesh.material.dispose();
+			mesh.material = source;
+			fail = true;
+			expect(draw).toThrow("draw failed");
+			expect(mesh.geometry.drawRange).toEqual({ start: 1, count: 4 });
+			draws.end();
 			draws.dispose();
 			source.dispose();
 			mesh.material.dispose();

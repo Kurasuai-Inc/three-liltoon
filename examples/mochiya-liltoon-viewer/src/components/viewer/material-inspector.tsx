@@ -10,6 +10,7 @@ import {
 	WarningCircleIcon,
 } from "@phosphor-icons/react";
 
+import { CubeTexturePreview } from "./cube-texture-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,24 +111,26 @@ function TextureRows({
 					key={texture.id}
 					className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 px-3 py-3"
 				>
-					<div className="relative aspect-square overflow-hidden rounded-md border bg-muted">
-						{texture.previewUrl ? (
-							<NextImage
-								src={texture.previewUrl}
-								alt={`${texture.name || t.unnamedTexture} ${t.texturePreview}`}
-								fill
-								sizes="80px"
-								className="object-contain"
-								unoptimized
-							/>
-						) : (
-							<div className="grid size-full place-items-center text-muted-foreground">
-								<ImageIcon className="size-5" />
-								<span className="sr-only">{t.previewUnavailable}</span>
-							</div>
-						)}
-					</div>
-					<div className="min-w-0">
+					{!texture.cube && (
+						<div className="relative aspect-square overflow-hidden rounded-md border bg-muted">
+							{texture.previewUrl ? (
+								<NextImage
+									src={texture.previewUrl}
+									alt={`${texture.name || t.unnamedTexture} ${t.texturePreview}`}
+									fill
+									sizes="80px"
+									className="object-contain"
+									unoptimized
+								/>
+							) : (
+								<div className="grid size-full place-items-center text-muted-foreground">
+									<ImageIcon className="size-5" />
+									<span className="sr-only">{t.previewUnavailable}</span>
+								</div>
+							)}
+						</div>
+					)}
+					<div className={texture.cube ? "col-span-2 min-w-0" : "min-w-0"}>
 						<div
 							className="truncate font-mono text-[0.6875rem] font-medium"
 							title={texture.slot}
@@ -163,6 +166,9 @@ function TextureRows({
 							))}
 						</dl>
 					</div>
+					{texture.cube && (
+						<CubeTexturePreview key={texture.id} cube={texture.cube} t={t} />
+					)}
 				</div>
 			))}
 		</div>

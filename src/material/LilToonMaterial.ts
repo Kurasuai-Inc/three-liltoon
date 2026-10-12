@@ -1,5 +1,8 @@
 import { TextureViews } from "../utils/TextureViews.js";
-import { checkTextureLimits } from "../renderer/textureLimits.js";
+import {
+	checkTextureLimits,
+	checkCubeTextureSizes,
+} from "../renderer/textureLimits.js";
 import {
 	BackSide,
 	Color,
@@ -314,6 +317,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 			this.syncColor();
 			rendererContext(renderer).prepareMaterial(this, scene);
 			this.updateDeformationUniforms(object, renderer);
+			checkCubeTextureSizes(renderer, this.uniforms);
 			checkTextureLimits(
 				renderer,
 				this.name,

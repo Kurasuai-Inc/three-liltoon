@@ -13,4 +13,5 @@ export type {
 	GLTFLilToonMaterialDefinition,
 	GLTFLilToonPropertyValue,
 	GLTFLilToonTextureInfo,
+	GLTFLilToonCubeTextureInfo,
 } from "./loaders/types.js";

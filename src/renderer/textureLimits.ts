@@ -1,4 +1,4 @@
-import type { WebGLRenderer } from "three";
+import type { CubeTexture, IUniform, WebGLRenderer } from "three";
 import type { ShaderResource } from "../generated/shaders.js";
 export interface TextureLimits {
 	vertex: number;
@@ -46,4 +46,22 @@ export function checkTextureLimits(
 		limits.set(renderer, limit);
 	}
 	assertTextureLimits(name, resources, limit, morph);
+}
+
+/** Data cubemaps cannot use Three's ordinary image-resize fallback. */
+export function checkCubeTextureSizes(
+	renderer: WebGLRenderer,
+	uniforms: Record<string, IUniform>,
+): void {
+	for (const [name, uniform] of Object.entries(uniforms)) {
+		const cube = uniform.value as CubeTexture | undefined;
+		if (!cube?.isCubeTexture) continue;
+		const face = cube.images?.[0] as
+			{ image?: { width?: number }; width?: number } | undefined;
+		const width = face?.image?.width ?? face?.width;
+		if (width !== undefined && width > renderer.capabilities.maxCubemapSize)
+			throw new Error(
+				`[three-liltoon] ${name}: cubemap face size ${width} exceeds this device's limit ${renderer.capabilities.maxCubemapSize}. Export a smaller cubemap.`,
+			);
+	}
 }

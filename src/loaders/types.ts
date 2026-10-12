@@ -4,7 +4,7 @@ import type {
 } from "../material/LilToonMaterialParameters.js";
 
 export const LILTOON_GLTF_EXTENSION = "MOCHIYA_materials_liltoon";
-export const LILTOON_GLTF_SPEC_VERSION = "1.2";
+export const LILTOON_GLTF_SPEC_VERSION = "1.3";
 
 /**
  * A zero-based glTF index.
@@ -27,10 +27,22 @@ export interface GLTFLilToonTextureInfo {
 	texCoord?: GLTFIndex;
 }
 
+/** Linear, little-endian RGBA binary16 cubemap in glTF world coordinates. */
+export interface GLTFLilToonCubeTextureInfo {
+	encoding: "rgba16f-linear";
+	/** Square base face size; power of two. @asType integer @minimum 1 */
+	size: number;
+	/** Base level followed by every authored level down to 1x1, or base only.
+	 * Each bufferView contains six tightly packed faces: +X,-X,+Y,-Y,+Z,-Z.
+	 * @minItems 1
+	 */
+	mipmaps: GLTFIndex[];
+}
+
 /** Material extension payload at materials[i].extensions.MOCHIYA_materials_liltoon. */
 export interface GLTFLilToonMaterialDefinition {
 	/** Extension version. When omitted, the current version is assumed. */
-	specVersion?: "1.0" | "1.1" | typeof LILTOON_GLTF_SPEC_VERSION;
+	specVersion?: "1.0" | "1.1" | "1.2" | typeof LILTOON_GLTF_SPEC_VERSION;
 	/** Source lilToon version, retained as metadata. */
 	lilToonVersion?: string | number;
 	/** Original Unity shader name; does not imply renderer support for that shader. */
@@ -43,4 +55,6 @@ export interface GLTFLilToonMaterialDefinition {
 	properties?: Record<string, GLTFLilToonPropertyValue>;
 	/** Original texture property names mapped to glTF texture indices or texture-info objects. */
 	textures?: Record<string, GLTFLilToonTextureInfo | GLTFIndex>;
+	/** Direction-sampled resources, separate from ordinary glTF 2D textures. */
+	cubeTextures?: Record<string, GLTFLilToonCubeTextureInfo>;
 }

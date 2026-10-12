@@ -65,6 +65,11 @@ const en = {
 	noMatchingProperties: "No properties match this search.",
 	noTextures: "No textures are assigned to this material.",
 	texturePreview: "texture preview",
+	cubeFaces: "Cubemap faces",
+	mipLevel: "Mip level",
+	previewExposure: "Preview exposure",
+	cubePreviewHint:
+		"Tone-mapped preview only. Exposure does not change the model.",
 	previewUnavailable: "Preview unavailable",
 	size: "Size",
 	colorSpace: "Color space",
@@ -157,6 +162,11 @@ const ja: Labels = {
 	noMatchingProperties: "検索条件に一致するプロパティはありません。",
 	noTextures: "このマテリアルにはテクスチャが割り当てられていません。",
 	texturePreview: "テクスチャのプレビュー",
+	cubeFaces: "キューブマップの6面",
+	mipLevel: "ミップレベル",
+	previewExposure: "プレビューの露出",
+	cubePreviewHint:
+		"トーンマッピング済みのプレビューです。露出を変えてもモデルには影響しません。",
 	previewUnavailable: "プレビューを表示できません",
 	size: "サイズ",
 	colorSpace: "カラースペース",

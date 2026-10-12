@@ -1,4 +1,4 @@
-import { Vector3, Matrix4, Vector2, CubeTexture, Vector4, Color, AmbientLight, HemisphereLight, RawShaderMaterial, GLSL3, SRGBColorSpace, DirectionalLight, DataTexture, RGBAFormat, UnsignedByteType, RepeatWrapping, LinearFilter, CustomBlending, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, RedFormat, FloatType, ClampToEdgeWrapping, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, ShaderChunk, BufferAttribute, FrontSide, BackSide, DoubleSide, LessEqualDepth, AlwaysDepth, GreaterEqualDepth, NotEqualDepth, GreaterDepth, EqualDepth, LessDepth, NeverDepth, SrcAlphaFactor, OneMinusSrcAlphaFactor, SrcAlphaSaturateFactor, OneMinusDstAlphaFactor, DstAlphaFactor, OneMinusSrcColorFactor, OneMinusDstColorFactor, SrcColorFactor, DstColorFactor, OneFactor, ZeroFactor, AddEquation, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, AlwaysStencilFunc, GreaterEqualStencilFunc, NotEqualStencilFunc, GreaterStencilFunc, LessEqualStencilFunc, EqualStencilFunc, LessStencilFunc, NeverStencilFunc, KeepStencilOp, DecrementWrapStencilOp, IncrementWrapStencilOp, InvertStencilOp, DecrementStencilOp, IncrementStencilOp, ReplaceStencilOp, ZeroStencilOp } from 'three';
+import { Vector3, Matrix4, Vector2, CubeTexture, Vector4, Color, AmbientLight, HemisphereLight, RawShaderMaterial, GLSL3, SRGBColorSpace, DirectionalLight, DataTexture, RGBAFormat, UnsignedByteType, RepeatWrapping, LinearFilter, CustomBlending, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, RedFormat, FloatType, HalfFloatType, LinearSRGBColorSpace, LinearMipmapLinearFilter, ClampToEdgeWrapping, LinearMipmapNearestFilter, ShaderChunk, BufferAttribute, FrontSide, BackSide, DoubleSide, LessEqualDepth, AlwaysDepth, GreaterEqualDepth, NotEqualDepth, GreaterDepth, EqualDepth, LessDepth, NeverDepth, SrcAlphaFactor, OneMinusSrcAlphaFactor, SrcAlphaSaturateFactor, OneMinusDstAlphaFactor, DstAlphaFactor, OneMinusSrcColorFactor, OneMinusDstColorFactor, SrcColorFactor, DstColorFactor, OneFactor, ZeroFactor, AddEquation, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, AlwaysStencilFunc, GreaterEqualStencilFunc, NotEqualStencilFunc, GreaterStencilFunc, LessEqualStencilFunc, EqualStencilFunc, LessStencilFunc, NeverStencilFunc, KeepStencilOp, DecrementWrapStencilOp, IncrementWrapStencilOp, InvertStencilOp, DecrementStencilOp, IncrementStencilOp, ReplaceStencilOp, ZeroStencilOp } from 'three';
 
 // src/generated/textureSemantics.ts
 var LILTOON_TEXTURE_SEMANTICS = {
@@ -1473,7 +1473,8 @@ function getNeutralTexture(name = "white") {
 }
 function normalizeLilToonTexture(property, texture) {
   const semantic = LILTOON_TEXTURE_SEMANTICS[property];
-  texture.colorSpace = semantic === "color" ? SRGBColorSpace : LinearSRGBColorSpace;
+  if (!texture.isCubeTexture)
+    texture.colorSpace = semantic === "color" ? SRGBColorSpace : LinearSRGBColorSpace;
   texture.flipY = false;
   texture.wrapS ||= RepeatWrapping;
   texture.wrapT ||= RepeatWrapping;
@@ -1539,7 +1540,7 @@ function detectLilToonFeatures(properties) {
 
 // src/loaders/types.ts
 var LILTOON_GLTF_EXTENSION = "MOCHIYA_materials_liltoon";
-var LILTOON_GLTF_SPEC_VERSION = "1.2";
+var LILTOON_GLTF_SPEC_VERSION = "1.3";
 var TextureViews = class {
   views = /* @__PURE__ */ new Map();
   get(resource, textures) {
@@ -1622,6 +1623,18 @@ function checkTextureLimits(renderer, name, resources, morph) {
     limits.set(renderer, limit);
   }
   assertTextureLimits(name, resources, limit, morph);
+}
+function checkCubeTextureSizes(renderer, uniforms) {
+  for (const [name, uniform] of Object.entries(uniforms)) {
+    const cube = uniform.value;
+    if (!cube?.isCubeTexture) continue;
+    const face = cube.images?.[0];
+    const width = face?.image?.width ?? face?.width;
+    if (width !== void 0 && width > renderer.capabilities.maxCubemapSize)
+      throw new Error(
+        `[three-liltoon] ${name}: cubemap face size ${width} exceeds this device's limit ${renderer.capabilities.maxCubemapSize}. Export a smaller cubemap.`
+      );
+  }
 }
 function parseGlobalTypes(...shaders) {
   const result = /* @__PURE__ */ new Map();
@@ -7006,6 +7019,7 @@ ${program.fragmentShader}`.matchAll(
       this.syncColor();
       rendererContext(renderer).prepareMaterial(this, scene);
       this.updateDeformationUniforms(object, renderer);
+      checkCubeTextureSizes(renderer, this.uniforms);
       checkTextureLimits(
         renderer,
         this.name,
@@ -7389,6 +7403,87 @@ async function ensureLilToonTangents(meshes) {
     generateIndexedTangents(geometry, MikkTSpace);
   }
 }
+var CubeTextureReader = class {
+  constructor(parser) {
+    this.parser = parser;
+  }
+  parser;
+  cache = /* @__PURE__ */ new Map();
+  load(info) {
+    try {
+      this.validate(info);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const key = JSON.stringify([info.encoding, info.size, info.mipmaps]);
+    let pending = this.cache.get(key);
+    if (!pending) {
+      pending = this.read(info);
+      this.cache.set(key, pending);
+    }
+    return pending;
+  }
+  validate(info) {
+    const fail = (reason) => {
+      throw new Error(`Invalid lilToon cubemap: ${reason}`);
+    };
+    if (!info || info.encoding !== "rgba16f-linear")
+      fail("unsupported encoding");
+    const { size, mipmaps } = info;
+    if (!Number.isSafeInteger(size) || size < 1 || Math.log2(size) % 1 !== 0)
+      fail("face size must be a positive power of two");
+    if (!Array.isArray(mipmaps) || mipmaps.length !== 1 && mipmaps.length !== Math.log2(size) + 1)
+      fail("expected a base level or a complete mip chain");
+    for (let level = 0; level < mipmaps.length; level++) {
+      const index = mipmaps[level];
+      const view = this.parser.json.bufferViews?.[index];
+      const width = size / 2 ** level;
+      const bytes = width * width * 6 * 8;
+      if (!Number.isSafeInteger(index) || index < 0 || !view || !Number.isSafeInteger(bytes) || view.byteLength !== bytes || view.byteStride)
+        fail(`mip ${level} has an invalid bufferView or byte length`);
+    }
+  }
+  async read(info) {
+    const levels = [];
+    for (let level = 0; level < info.mipmaps.length; level++) {
+      const width = info.size / 2 ** level;
+      const buffer = await this.parser.getDependency(
+        "bufferView",
+        info.mipmaps[level]
+      );
+      const count = width * width * 4;
+      if (buffer.byteLength !== count * 6 * 2)
+        throw new Error(`Invalid lilToon cubemap: mip ${level} byte length`);
+      const source = new DataView(buffer);
+      const faces = [];
+      for (let face = 0; face < 6; face++) {
+        const pixels = new Uint16Array(count);
+        for (let i = 0; i < count; i++) {
+          const value = source.getUint16((face * count + i) * 2, true);
+          if ((value & 31744) === 31744)
+            throw new Error("Invalid lilToon cubemap: non-finite pixel");
+          pixels[i] = value;
+        }
+        faces.push(
+          new DataTexture(pixels, width, width, RGBAFormat, HalfFloatType)
+        );
+      }
+      levels.push(faces);
+    }
+    const cube = new CubeTexture(levels[0]);
+    cube.name = "lilToon reflection cubemap";
+    cube.type = HalfFloatType;
+    cube.format = RGBAFormat;
+    cube.colorSpace = LinearSRGBColorSpace;
+    cube.generateMipmaps = false;
+    cube.magFilter = LinearFilter;
+    cube.minFilter = levels.length > 1 ? LinearMipmapLinearFilter : LinearFilter;
+    cube.mipmaps = levels.slice(1).map((image) => ({ image }));
+    cube.needsUpdate = true;
+    this.parser.associations.set(cube, {});
+    return cube;
+  }
+};
 
 // src/loaders/GLTFLilToonExtension.ts
 function renderModeFromDefinition(definition) {
@@ -7409,17 +7504,26 @@ var GLTFLilToonExtension = class {
   constructor(parser, options = {}) {
     this.parser = parser;
     this.options = options;
+    this.#cubes = new CubeTextureReader(parser);
   }
   parser;
   options;
   name = LILTOON_GLTF_EXTENSION;
   #materialWarnings = /* @__PURE__ */ new Map();
+  #cubes;
   loadMaterial(materialIndex) {
     const materialDefinition = this.parser.json.materials?.[materialIndex];
     const definition = materialDefinition?.extensions?.[this.name];
     if (!definition) return null;
     return (async () => {
       const textures = {};
+      for (const [property, info] of Object.entries(
+        definition.cubeTextures ?? {}
+      )) {
+        if (property !== "_ReflectionCubeTex" || definition.textures?.[property] !== void 0)
+          throw new Error(`Invalid lilToon cubemap property: ${property}`);
+        textures[property] = await this.#cubes.load(info);
+      }
       await Promise.all(
         Object.entries(definition.textures ?? {}).map(
           async ([property, textureInfo]) => {
@@ -7435,13 +7539,13 @@ var GLTFLilToonExtension = class {
         name: materialDefinition.name,
         renderMode: renderModeFromDefinition(definition),
         transparencyMode: definition.transparencyMode ?? (/TwoPassTransparent/i.test(definition.shaderVariant ?? "") ? "two-pass" : /OnePassTransparent/i.test(definition.shaderVariant ?? "") ? "one-pass" : "normal"),
-        properties: definition.properties,
+        properties: definition.cubeTextures?._ReflectionCubeTex ? { ...definition.properties, _ReflectionCubeTex_HDR: [1, 1, 0, 0] } : definition.properties,
         textures,
         deformation: true
       });
       this.parser.associations.set(material, { materials: materialIndex });
       const warnings = material.getWarnings();
-      if (definition.specVersion && definition.specVersion !== "1.0" && definition.specVersion !== "1.1" && definition.specVersion !== LILTOON_GLTF_SPEC_VERSION) {
+      if (definition.specVersion && definition.specVersion !== "1.0" && definition.specVersion !== "1.1" && definition.specVersion !== "1.2" && definition.specVersion !== LILTOON_GLTF_SPEC_VERSION) {
         warnings.push({
           severity: "warning",
           code: "spec-version-mismatch",

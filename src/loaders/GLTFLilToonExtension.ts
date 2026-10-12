@@ -13,6 +13,7 @@ import {
 import { warnLilToon } from "../utils/diagnostics.js";
 import type { LilToonWarning } from "../utils/materialWarnings.js";
 import { ensureLilToonTangents } from "./LilToonTangentGenerator.js";
+import { CubeTextureReader } from "./cubeTextures.js";
 
 export interface GLTFLilToonExtensionOptions {
 	/** Non-fatal compatibility warnings. Omit to log them to the console. */
@@ -37,11 +38,14 @@ function renderModeFromDefinition(definition: GLTFLilToonMaterialDefinition) {
 export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 	readonly name = LILTOON_GLTF_EXTENSION;
 	readonly #materialWarnings = new Map<number, LilToonWarning[]>();
+	readonly #cubes: CubeTextureReader;
 
 	constructor(
 		readonly parser: GLTFParser,
 		readonly options: GLTFLilToonExtensionOptions = {},
-	) {}
+	) {
+		this.#cubes = new CubeTextureReader(parser);
+	}
 
 	loadMaterial(materialIndex: number): Promise<Material> | null {
 		const materialDefinition = this.parser.json.materials?.[materialIndex];
@@ -50,6 +54,16 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 		if (!definition) return null;
 		return (async () => {
 			const textures: Record<string, Texture> = {};
+			for (const [property, info] of Object.entries(
+				definition.cubeTextures ?? {},
+			)) {
+				if (
+					property !== "_ReflectionCubeTex" ||
+					definition.textures?.[property] !== undefined
+				)
+					throw new Error(`Invalid lilToon cubemap property: ${property}`);
+				textures[property] = await this.#cubes.load(info);
+			}
 			await Promise.all(
 				Object.entries(definition.textures ?? {}).map(
 					async ([property, textureInfo]) => {
@@ -72,7 +86,9 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 						: /OnePassTransparent/i.test(definition.shaderVariant ?? "")
 							? "one-pass"
 							: "normal"),
-				properties: definition.properties,
+				properties: definition.cubeTextures?._ReflectionCubeTex
+					? { ...definition.properties, _ReflectionCubeTex_HDR: [1, 1, 0, 0] }
+					: definition.properties,
 				textures,
 				deformation: true,
 			});
@@ -82,6 +98,7 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 				definition.specVersion &&
 				definition.specVersion !== "1.0" &&
 				definition.specVersion !== "1.1" &&
+				definition.specVersion !== "1.2" &&
 				definition.specVersion !== LILTOON_GLTF_SPEC_VERSION
 			) {
 				warnings.push({

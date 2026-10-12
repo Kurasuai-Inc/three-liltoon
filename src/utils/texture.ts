@@ -56,8 +56,10 @@ export function normalizeLilToonTexture(
 	const semantic = (
 		LILTOON_TEXTURE_SEMANTICS as Record<string, "color" | "normal" | "data">
 	)[property];
-	texture.colorSpace =
-		semantic === "color" ? SRGBColorSpace : LinearSRGBColorSpace;
+	// Cube data may already be decoded HDR. Its explicit transfer function is authoritative.
+	if (!(texture as Texture & { isCubeTexture?: boolean }).isCubeTexture)
+		texture.colorSpace =
+			semantic === "color" ? SRGBColorSpace : LinearSRGBColorSpace;
 	texture.flipY = false;
 	texture.wrapS ||= RepeatWrapping;
 	texture.wrapT ||= RepeatWrapping;

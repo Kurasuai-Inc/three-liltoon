@@ -5,6 +5,7 @@ import {
 } from "@mochiya/three-liltoon";
 import {
 	Color,
+	type CubeTexture,
 	Material,
 	Mesh,
 	Texture,
@@ -21,6 +22,7 @@ import type {
 	ModelInspection,
 	TextureInspection,
 } from "./types";
+import { cubeFace } from "./cube-preview";
 import { createTexturePreview } from "./texture-preview";
 import type { Labels } from "../i18n";
 
@@ -81,8 +83,11 @@ function flattenRecord(
 }
 
 function textureSize(texture: Texture) {
-	const image = texture.image as
-		{ width?: number; height?: number } | undefined;
+	const image = (
+		(texture as CubeTexture).isCubeTexture
+			? cubeFace(texture as CubeTexture, 0, 0)
+			: texture.image
+	) as { width?: number; height?: number } | undefined;
 	return image?.width && image?.height
 		? `${image.width} × ${image.height}`
 		: "";
@@ -94,6 +99,9 @@ function textureInspection(slot: string, texture: Texture): TextureInspection {
 		slot,
 		name: texture.name,
 		previewUrl: createTexturePreview(texture),
+		cube: (texture as CubeTexture).isCubeTexture
+			? (texture as CubeTexture)
+			: undefined,
 		size: textureSize(texture),
 		colorSpace: texture.colorSpace,
 		flipY: texture.flipY,

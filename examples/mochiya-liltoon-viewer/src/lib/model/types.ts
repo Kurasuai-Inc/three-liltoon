@@ -1,5 +1,5 @@
 import type { VRM } from "@pixiv/three-vrm";
-import type { AnimationClip, Group } from "three";
+import type { AnimationClip, Group, CubeTexture } from "three";
 import type { LilToonWarning } from "@mochiya/three-liltoon";
 import type { Labels } from "../i18n";
 
@@ -22,6 +22,7 @@ export type TextureInspection = {
 	slot: string;
 	name: string;
 	previewUrl?: string;
+	cube?: CubeTexture;
 	size: string;
 	colorSpace: string;
 	flipY: boolean;

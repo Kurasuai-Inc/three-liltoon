@@ -96,7 +96,7 @@ declare class LilToonMaterialLoader extends Loader<LilToonMaterial> {
 }
 
 declare const LILTOON_GLTF_EXTENSION = "MOCHIYA_materials_liltoon";
-declare const LILTOON_GLTF_SPEC_VERSION = "1.2";
+declare const LILTOON_GLTF_SPEC_VERSION = "1.3";
 /**
  * A zero-based glTF index.
  * @asType integer
@@ -115,10 +115,21 @@ interface GLTFLilToonTextureInfo {
      */
     texCoord?: GLTFIndex;
 }
+/** Linear, little-endian RGBA binary16 cubemap in glTF world coordinates. */
+interface GLTFLilToonCubeTextureInfo {
+    encoding: "rgba16f-linear";
+    /** Square base face size; power of two. @asType integer @minimum 1 */
+    size: number;
+    /** Base level followed by every authored level down to 1x1, or base only.
+     * Each bufferView contains six tightly packed faces: +X,-X,+Y,-Y,+Z,-Z.
+     * @minItems 1
+     */
+    mipmaps: GLTFIndex[];
+}
 /** Material extension payload at materials[i].extensions.MOCHIYA_materials_liltoon. */
 interface GLTFLilToonMaterialDefinition {
     /** Extension version. When omitted, the current version is assumed. */
-    specVersion?: "1.0" | "1.1" | typeof LILTOON_GLTF_SPEC_VERSION;
+    specVersion?: "1.0" | "1.1" | "1.2" | typeof LILTOON_GLTF_SPEC_VERSION;
     /** Source lilToon version, retained as metadata. */
     lilToonVersion?: string | number;
     /** Original Unity shader name; does not imply renderer support for that shader. */
@@ -131,6 +142,8 @@ interface GLTFLilToonMaterialDefinition {
     properties?: Record<string, GLTFLilToonPropertyValue>;
     /** Original texture property names mapped to glTF texture indices or texture-info objects. */
     textures?: Record<string, GLTFLilToonTextureInfo | GLTFIndex>;
+    /** Direction-sampled resources, separate from ordinary glTF 2D textures. */
+    cubeTextures?: Record<string, GLTFLilToonCubeTextureInfo>;
 }
 
-export { type GLTFLilToonMaterialDefinition as G, LilToonMaterial as L, type SerializedLilToonMaterial as S, type LilToonGlobalUniforms as a, type LilToonMaterialParameters as b, LILTOON_GLTF_EXTENSION as c, LILTOON_GLTF_SPEC_VERSION as d, type LilToonFeatureSet as e, LilToonMaterialLoader as f, type LilToonRenderMode as g, type LilToonScalarOrVector as h, type LilToonTransparencyMode as i, detectLilToonFeatures as j, type GLTFLilToonPropertyValue as k, type GLTFLilToonTextureInfo as l };
+export { type GLTFLilToonCubeTextureInfo as G, LilToonMaterial as L, type SerializedLilToonMaterial as S, type LilToonGlobalUniforms as a, type LilToonMaterialParameters as b, LILTOON_GLTF_EXTENSION as c, LILTOON_GLTF_SPEC_VERSION as d, type LilToonFeatureSet as e, LilToonMaterialLoader as f, type LilToonRenderMode as g, type LilToonScalarOrVector as h, type LilToonTransparencyMode as i, detectLilToonFeatures as j, type GLTFLilToonMaterialDefinition as k, type GLTFLilToonPropertyValue as l, type GLTFLilToonTextureInfo as m };

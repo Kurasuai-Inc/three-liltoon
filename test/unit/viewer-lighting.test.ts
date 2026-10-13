@@ -73,9 +73,7 @@ describe("viewer fixed lighting", () => {
 				lighting.unitySHAr.y * normal.y +
 				lighting.unitySHAr.z * normal.z +
 				lighting.unitySHAr.w;
-			const threeHemisphere =
-				0.05 +
-				0.5 * (0.5 * normal.y + 0.5);
+			const threeHemisphere = 0.05 + 0.5 * (0.5 * normal.y + 0.5);
 			expect(packed).toBeCloseTo(threeHemisphere);
 		}
 	});

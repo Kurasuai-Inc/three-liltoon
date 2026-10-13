@@ -24,6 +24,12 @@ type Recipe = {
 	outline: LilToonMaterial;
 	depth: MeshDepthMaterial;
 	distance: MeshDistanceMaterial;
+	shadowAlphaMask: {
+		map: { value: Texture | null };
+		mode: { value: number };
+		scale: { value: number };
+		value: { value: number };
+	};
 	input: Texture | null;
 	map: Texture | null;
 	propertyRevision: number;
@@ -36,6 +42,52 @@ const originalHooks = new WeakMap<
 	Object3D["onBeforeRender"],
 	Object3D["onBeforeRender"]
 >();
+
+// The upstream shadowcaster includes lil_common_frag_alpha.hlsl, so its alpha test
+// runs after lil_common_frag.hlsl applies AlphaMask (lines 460–474). Three's
+// MeshDepthMaterial only samples the main texture; mirror those four alpha modes
+// before its alpha-test chunk so masked hair casts the same silhouette.
+function enableShadowAlphaMask(
+	material: MeshDepthMaterial | MeshDistanceMaterial,
+	bindings: Recipe["shadowAlphaMask"],
+): void {
+	material.onBeforeCompile = (shader) => {
+		shader.uniforms.lilToonAlphaMaskTexture = bindings.map;
+		shader.uniforms.lilToonAlphaMaskMode = bindings.mode;
+		shader.uniforms.lilToonAlphaMaskScale = bindings.scale;
+		shader.uniforms.lilToonAlphaMaskValue = bindings.value;
+		if (!shader.fragmentShader.includes("#include <common>"))
+			throw new Error("Three shadow shader is missing common.");
+		shader.fragmentShader = shader.fragmentShader.replace(
+			"#include <common>",
+			`#include <common>
+#if defined(USE_MAP)
+uniform sampler2D lilToonAlphaMaskTexture;
+#endif
+uniform int lilToonAlphaMaskMode;
+uniform float lilToonAlphaMaskScale;
+uniform float lilToonAlphaMaskValue;`,
+		);
+		if (!shader.fragmentShader.includes("#include <alphatest_fragment>"))
+			throw new Error("Three shadow shader is missing alphatest_fragment.");
+		shader.fragmentShader = shader.fragmentShader.replace(
+			"#include <alphatest_fragment>",
+			`if (lilToonAlphaMaskMode >= 1 && lilToonAlphaMaskMode <= 4) {
+float lilToonAlpha = 1.0;
+#if defined(USE_MAP)
+lilToonAlpha = texture(lilToonAlphaMaskTexture, vMapUv).r;
+#endif
+lilToonAlpha = clamp(lilToonAlpha * lilToonAlphaMaskScale + lilToonAlphaMaskValue, 0.0, 1.0);
+if (lilToonAlphaMaskMode == 1) diffuseColor.a = lilToonAlpha;
+if (lilToonAlphaMaskMode == 2) diffuseColor.a *= lilToonAlpha;
+if (lilToonAlphaMaskMode == 3) diffuseColor.a = clamp(diffuseColor.a + lilToonAlpha, 0.0, 1.0);
+if (lilToonAlphaMaskMode == 4) diffuseColor.a = clamp(diffuseColor.a - lilToonAlpha, 0.0, 1.0);
+}
+#include <alphatest_fragment>`,
+		);
+	};
+	material.customProgramCacheKey = () => "liltoon-shadow-alpha-mask-v1";
+}
 
 /** Renderer-owned recipes; helpers exist in the scene only during rendering. */
 class AutomaticPasses {
@@ -66,12 +118,21 @@ class AutomaticPasses {
 			});
 			const depth = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
 			const distance = new MeshDistanceMaterial();
+			const shadowAlphaMask = {
+				map: { value: null as Texture | null },
+				mode: { value: 0 },
+				scale: { value: 1 },
+				value: { value: 0 },
+			};
+			enableShadowAlphaMask(depth, shadowAlphaMask);
+			enableShadowAlphaMask(distance, shadowAlphaMask);
 			recipe = {
 				owners: new Map(),
 				source,
 				outline,
 				depth,
 				distance,
+				shadowAlphaMask,
 				input: null,
 				map: null,
 				propertyRevision: -1,
@@ -245,6 +306,29 @@ class AutomaticPasses {
 						material.alphaMap = null;
 						material.alphaTest = recipe.source.alphaTest;
 						material.opacity = recipe.source.opacity;
+					const alphaMaskMode = Number(
+						recipe.source.getProperty("_AlphaMaskMode") ?? 0,
+					);
+					const alphaMask = recipe.source.lilToonTextures._AlphaMask ?? null;
+					if (alphaMaskMode !== 0 && !alphaMask)
+						throw new Error(
+							"An enabled lilToon shadow alpha mask requires _AlphaMask texture data.",
+						);
+					if (alphaMaskMode !== 0 && !recipe.map)
+						throw new Error(
+							"lilToon shadow alpha masks require the source main texture UV transform.",
+						);
+					// Bind a valid texture even while the mode is disabled: the shadow shader
+					// keeps its sampler declaration whenever Three enables USE_MAP.
+					recipe.shadowAlphaMask.map.value =
+						alphaMaskMode === 0 ? recipe.map : alphaMask;
+						recipe.shadowAlphaMask.mode.value = alphaMaskMode;
+						recipe.shadowAlphaMask.scale.value = Number(
+							recipe.source.getProperty("_AlphaMaskScale") ?? 1,
+						);
+						recipe.shadowAlphaMask.value.value = Number(
+							recipe.source.getProperty("_AlphaMaskValue") ?? 0,
+						);
 					} else if (
 						!recipe &&
 						(material === first.depth || material === first.distance)

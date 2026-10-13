@@ -345,6 +345,57 @@ describe("renderer-owned automatic passes", () => {
 		expect(texture.matrix).toEqual(original);
 		release();
 	});
+	it("applies lilToon AlphaMask before the automatic shadow alpha test", () => {
+		const main = new DataTexture(),
+			alphaMask = new DataTexture(),
+			source = outlined();
+		source.map = main;
+		source.setTexture("_AlphaMask", alphaMask);
+		source.setProperty("_AlphaMaskMode", 1);
+		source.setProperty("_AlphaMaskScale", 0.5);
+		source.setProperty("_AlphaMaskValue", 0.2);
+		source.alphaTest = 0.1;
+		const scene = new Scene(),
+			mesh = new Mesh(new BoxGeometry(), source),
+			camera = new PerspectiveCamera();
+		scene.add(mesh);
+		const renderer = harness(() => {
+			const material = mesh.customDepthMaterial as MeshDepthMaterial;
+			mesh.onBeforeShadow(
+				renderer,
+				scene,
+				camera,
+				camera,
+				mesh.geometry,
+				material,
+				null!,
+			);
+			const shader = {
+				uniforms: {},
+				vertexShader: "",
+				fragmentShader: "#include <common>\n#include <alphatest_fragment>",
+			};
+			material.onBeforeCompile(shader as never, renderer);
+			expect(shader.uniforms).toMatchObject({
+				lilToonAlphaMaskTexture: { value: alphaMask },
+				lilToonAlphaMaskMode: { value: 1 },
+				lilToonAlphaMaskScale: { value: 0.5 },
+				lilToonAlphaMaskValue: { value: 0.2 },
+			});
+			expect(
+				shader.fragmentShader.indexOf("diffuseColor.a = lilToonAlpha;"),
+			).toBeLessThan(
+				shader.fragmentShader.indexOf("#include <alphatest_fragment>"),
+			);
+		});
+		const release = enableLilToon(renderer);
+		renderer.render(scene, camera);
+		release();
+		source.dispose();
+		main.dispose();
+		alphaMask.dispose();
+		mesh.geometry.dispose();
+	});
 	it("supports nested rendering and reference-counted renderer ownership", () => {
 		const scene = new Scene(),
 			other = new Scene(),

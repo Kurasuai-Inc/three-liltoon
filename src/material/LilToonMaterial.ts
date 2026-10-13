@@ -130,7 +130,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 	color = new Color(1, 1, 1);
 	readonly isLilToonMaterial = true;
 	readonly lilToonProperties: Record<string, LilToonScalarOrVector>;
-	readonly lilToonTextures: Record<string, Texture | null> = {};
+	readonly lilToonTextures: Record<string, Texture | null>;
 	globalUniforms: LilToonGlobalUniforms;
 	renderMode: LilToonRenderMode;
 	pass: LilToonPass;
@@ -143,7 +143,82 @@ export class LilToonMaterial extends RawShaderMaterial {
 	readonly #textureViews = new TextureViews();
 	readonly #morphWeights = new MorphWeights();
 	#usedProperties: ReadonlySet<string>;
+	#propertyRevision = 0;
+	#textureRevision = 0;
+	#trackedPropertyValues = new WeakMap<object, object>();
 	readonly #startedAt = performance.now();
+
+	get propertyRevision(): number {
+		return this.#propertyRevision;
+	}
+
+	get textureRevision(): number {
+		return this.#textureRevision;
+	}
+
+	#trackPropertyValue(value: LilToonScalarOrVector): LilToonScalarOrVector {
+		if (typeof value !== "object" || value === null) return value;
+		const existing = this.#trackedPropertyValues.get(value);
+		if (existing) return existing as LilToonScalarOrVector;
+		const tracked = new Proxy(value, {
+			set: (target, key, next) => {
+				const previous = Reflect.get(target, key, target);
+				const changed = Reflect.set(target, key, next, target);
+				if (changed && !Object.is(previous, next)) this.#propertyRevision++;
+				return changed;
+			},
+			deleteProperty: (target, key) => {
+				const existed = Reflect.has(target, key);
+				const changed = Reflect.deleteProperty(target, key);
+				if (changed && existed) this.#propertyRevision++;
+				return changed;
+			},
+		});
+		this.#trackedPropertyValues.set(value, tracked);
+		this.#trackedPropertyValues.set(tracked, tracked);
+		return tracked as LilToonScalarOrVector;
+	}
+
+	// Keep direct public bag edits and nested vector/array writes observable without scanning the bag each draw.
+	#createPropertyBag(
+		initial: Record<string, LilToonScalarOrVector>,
+	): Record<string, LilToonScalarOrVector> {
+		const properties = {} as Record<string, LilToonScalarOrVector>;
+		for (const [name, value] of Object.entries(initial))
+			properties[name] = this.#trackPropertyValue(value);
+		return new Proxy(properties, {
+			set: (target, key, value) => {
+				const tracked = this.#trackPropertyValue(value as LilToonScalarOrVector);
+				const previous = Reflect.get(target, key, target);
+				const changed = Reflect.set(target, key, tracked, target);
+				if (changed && !Object.is(previous, tracked)) this.#propertyRevision++;
+				return changed;
+			},
+			deleteProperty: (target, key) => {
+				const existed = Reflect.has(target, key);
+				const changed = Reflect.deleteProperty(target, key);
+				if (changed && existed) this.#propertyRevision++;
+				return changed;
+			},
+		});
+	}
+
+	#createTextureBag(): Record<string, Texture | null> {
+		return new Proxy({} as Record<string, Texture | null>, {
+			set: (target, key, texture) => {
+				const previous = Reflect.get(target, key, target);
+				const changed = Reflect.set(target, key, texture, target);
+				if (changed && !Object.is(previous, texture)) this.#textureRevision++;
+				return changed;
+			},
+			deleteProperty: (target, key) => {
+				const existed = Reflect.has(target, key);
+				const changed = Reflect.deleteProperty(target, key);
+				if (changed && existed) this.#textureRevision++;
+				return changed;
+			},
+		});
+	}
 
 	constructor(parameters: LilToonMaterialParameters = {}) {
 		const renderMode = parameters.renderMode ?? "opaque";
@@ -217,7 +292,8 @@ export class LilToonMaterial extends RawShaderMaterial {
 			program.vertexShader,
 			program.fragmentShader,
 		);
-		this.lilToonProperties = propertyDefaults(renderMode);
+		this.lilToonProperties = this.#createPropertyBag(propertyDefaults(renderMode));
+		this.lilToonTextures = this.#createTextureBag();
 		Object.defineProperty(this, "opacity", {
 			configurable: true,
 			enumerable: true,
@@ -286,6 +362,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 			this.renderMode,
 			this.lilToonProperties,
 			this.pass,
+			this.propertyRevision,
 		);
 		this.defaultAttributeValues = {
 			...this.defaultAttributeValues,
@@ -390,6 +467,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 				this.renderMode,
 				this.lilToonProperties,
 				this.pass,
+				this.propertyRevision,
 			);
 		}
 		this.refreshProgram();
@@ -532,7 +610,23 @@ export class LilToonMaterial extends RawShaderMaterial {
 				? current.w
 				: 1;
 		const value = [this.color.r, this.color.g, this.color.b, alpha];
-		this.lilToonProperties._Color = value;
+		const unchanged =
+			(Array.isArray(current) &&
+				current[0] === value[0] &&
+				current[1] === value[1] &&
+				current[2] === value[2] &&
+				(current[3] ?? 1) === alpha) ||
+			(current instanceof Color &&
+				current.r === value[0] &&
+				current.g === value[1] &&
+				current.b === value[2]) ||
+			(current instanceof Vector4 &&
+				current.x === value[0] &&
+				current.y === value[1] &&
+				current.z === value[2] &&
+				current.w === alpha);
+		if (!unchanged) this.lilToonProperties._Color = value;
+		// Keep the per-draw uniform refresh even when the property bag is already current.
 		setGlobalProperty(this.globalUniforms, "_Color", value);
 	}
 	private refreshProgram(): void {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	BackSide,
 	Bone,
 	BoxGeometry,
 	Color,
@@ -89,6 +90,41 @@ describe("automatic material inputs", () => {
 		b.geometry.dispose();
 		first.overrideMaterial.dispose();
 	});
+	it("syncs changed outline properties once and keeps unchanged pass state clean", () => {
+		const scene = new Scene();
+		const source = new LilToonMaterial({
+			properties: { _OutlineCull: 2, _UseOutline: 1, _OutlineWidth: 0.1 },
+		});
+		const mesh = new Mesh(new BoxGeometry(), source);
+		const camera = new PerspectiveCamera();
+		scene.add(mesh);
+		let outline: LilToonMaterial | undefined;
+		const renderer = harness(() => {
+			outline = (mesh.children[0] as Mesh).material as LilToonMaterial;
+		});
+		const release = enableLilToon(renderer);
+		renderer.render(scene, camera);
+		expect(outline).toBeDefined();
+		const needsUpdate = vi.spyOn(outline!, "needsUpdate", "set");
+		renderer.render(scene, camera);
+		expect(needsUpdate).not.toHaveBeenCalled();
+
+		source.lilToonProperties._OutlineCull = 1;
+		renderer.render(scene, camera);
+		expect(outline!.side).toBe(BackSide);
+		expect(needsUpdate).toHaveBeenCalledOnce();
+		renderer.render(scene, camera);
+		expect(needsUpdate).toHaveBeenCalledOnce();
+
+		const revision = source.propertyRevision;
+		(source.lilToonProperties._OutlineColor as number[])[0] = 2;
+		expect(source.propertyRevision).toBeGreaterThan(revision);
+		renderer.render(scene, camera);
+		release();
+		source.dispose();
+		mesh.geometry.dispose();
+	});
+
 	it("binds a shared material to the renderer and scene performing each draw", () => {
 		const material = outlined(),
 			mesh = new Mesh(new BoxGeometry(), material),

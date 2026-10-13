@@ -205,6 +205,7 @@ export class FurPasses {
 							source.renderMode,
 							source.lilToonProperties,
 							material.pass,
+							material.propertyRevision,
 						);
 				}
 				const group =

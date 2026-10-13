@@ -33,6 +33,7 @@ export function syncPassMaterial(
 		source.renderMode,
 		source.lilToonProperties,
 		target.pass,
+		target.propertyRevision,
 	);
 }
 

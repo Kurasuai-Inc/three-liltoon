@@ -12,5 +12,12 @@
 		"resolveJsonModule": true,
 		"types": ["node", "vitest/globals"]
 	},
-	"include": ["src", "tools", "test", "tsup.config.ts", "vitest.config.ts"]
+	"include": [
+		"src",
+		"tools",
+		"test",
+		"examples/ambient-capture/**/*.ts",
+		"tsup.config.ts",
+		"vitest.config.ts"
+	]
 }

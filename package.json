@@ -71,6 +71,7 @@
 		"test:parity": "tsx test/parity/run.ts",
 		"test:parity:required": "tsx test/parity/run.ts --require-fixtures",
 		"example:dev": "vite examples/basic-three",
+		"example:ambient-capture:dev": "vite",
 		"example:build": "npm run build:package && vite build examples/basic-three",
 		"example:viewer:dev": "npm --prefix examples/mochiya-liltoon-viewer run dev",
 		"example:viewer:build": "npm --prefix examples/mochiya-liltoon-viewer run build",

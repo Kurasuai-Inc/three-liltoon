@@ -38,7 +38,7 @@ See [Material specialization](MATERIAL_SPECIALIZATION.md) for scope, tests and r
 
 - object, view, projection, camera, screen, and time uniforms;
 - Unity-style texture/sampler macros;
-- one main light, ambient/SH approximation, and neutral additional-light fields;
+- one main light, ambient L0 and first-order hemisphere SH, with neutral additional-light fields;
 - Three directional shadow-map sampling;
 - CubeTexture environment sampling;
 - fog, stereo, and instancing fallbacks;
@@ -51,7 +51,7 @@ The ABI uses one generated `_Globals` structured uniform value in Three.js plus 
 
 `LilToonMaterial` is a public `RawShaderMaterial`. It preserves upstream property names, applies generated Unity-to-Three render-state mappings, specializes the forward template by render mode, enabled features and assigned textures, normalizes color textures as sRGB and metallic/smoothness/mask textures as linear data, binds safe neutral textures, and updates deformation resources per object. Unity texture transforms remain property-scoped shader uniforms, so two normal-map slots can share an image while retaining independent `_ST` tiling and offsets.
 
-The private renderer context in `src/renderer/rendererContext.ts` uses public Three.js state. Once per scene/render frame it selects the first visible directional light, reads ambient or hemisphere lighting, binds its shadow target and matrix, and binds a CubeTexture environment. The material then receives object/camera state in its `onBeforeRender` callback.
+The private renderer context in `src/renderer/rendererContext.ts` uses public Three.js state. Once per scene/render frame it selects the first visible directional light, combines ambient lights into SH L0, represents each hemisphere light as L0 plus a world-oriented L1 gradient, binds its shadow target and matrix, and binds a CubeTexture environment. The material then receives object/camera state in its `onBeforeRender` callback.
 
 Inactive directional shadow maps must contribute no occlusion. The shadow adapter requires renderer shadows to be enabled, a shadow-casting main light, and an allocated map. Otherwise it binds a shared white RGBA texture (packed far depth `1`), resets the projection to identity, resets the map size to `1 × 1`, and clears both biases. This prevents the ordinary sampler2D null-texture fallback (zero depth) from creating world-axis-aligned false shadows, and prevents disabled renderers from sampling stale maps. Material construction and null system-shadow bindings also use the white fallback, including outline programs. The neutral binding leaves authored toon shading active. Regression tests cover absent/disabled maps, state reset, re-enabling shadows, and neutral attenuation across world-space boundaries.
 

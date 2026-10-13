@@ -26,6 +26,9 @@ type Recipe = {
 	distance: MeshDistanceMaterial;
 	input: Texture | null;
 	map: Texture | null;
+	propertyRevision: number;
+	textureRevision: number;
+	renderMode: LilToonMaterial["renderMode"];
 	release(): void;
 };
 const helpers = new WeakSet<Object3D>();
@@ -71,6 +74,9 @@ class AutomaticPasses {
 				distance,
 				input: null,
 				map: null,
+				propertyRevision: -1,
+				textureRevision: -1,
+				renderMode: source.renderMode,
 				release: () => {
 					source.removeEventListener("dispose", recipe!.release);
 					outline.dispose();
@@ -86,30 +92,44 @@ class AutomaticPasses {
 		recipe.owners.set(mesh, scene);
 		// Read mutable standard Color edits as well as original property setters.
 		source.getProperty("_Color");
-		for (const [name, value] of Object.entries(source.lilToonProperties)) {
-			recipe.outline.lilToonProperties[name] = value;
-			setGlobalProperty(recipe.outline.globalUniforms, name, value);
+		const propertiesChanged =
+			recipe.propertyRevision !== source.propertyRevision ||
+			recipe.renderMode !== source.renderMode;
+		const texturesChanged = recipe.textureRevision !== source.textureRevision;
+		// Per-draw object/camera uniforms still refresh in onBeforeRender; only copied outline inputs are gated here.
+		if (propertiesChanged) {
+			for (const [name, value] of Object.entries(source.lilToonProperties)) {
+				recipe.outline.lilToonProperties[name] = value;
+				setGlobalProperty(recipe.outline.globalUniforms, name, value);
+			}
+			recipe.outline.setProperty("_Color", source.getProperty("_Color")!);
+			recipe.outline.renderMode = source.renderMode;
+			applyLilToonPassState(
+				recipe.outline,
+				source.renderMode,
+				source.lilToonProperties,
+				"outline",
+				recipe.outline.propertyRevision,
+			);
+			recipe.propertyRevision = source.propertyRevision;
+			recipe.renderMode = source.renderMode;
 		}
-		recipe.outline.setProperty("_Color", source.getProperty("_Color")!);
-		for (const [name, texture] of Object.entries(source.lilToonTextures)) {
-			if (recipe.outline.lilToonTextures[name] !== texture)
-				recipe.outline.setTexture(name, texture);
+		if (texturesChanged) {
+			for (const [name, texture] of Object.entries(source.lilToonTextures)) {
+				if (recipe.outline.lilToonTextures[name] !== texture)
+					recipe.outline.setTexture(name, texture);
+			}
+			recipe.textureRevision = source.textureRevision;
 		}
-		recipe.outline.renderMode = source.renderMode;
-		applyLilToonPassState(
-			recipe.outline,
-			source.renderMode,
-			source.lilToonProperties,
-			"outline",
-		);
 		recipe.outline.visible = source.visible;
-		if (recipe.input !== source.map) {
+		const inputChanged = recipe.input !== source.map;
+		if (inputChanged) {
 			recipe.map?.dispose();
 			recipe.input = source.map;
 			recipe.map = source.map?.clone() ?? null;
 			if (recipe.map) recipe.map.matrixAutoUpdate = false;
 		}
-		if (recipe.map) {
+		if (recipe.map && (propertiesChanged || inputChanged)) {
 			const st = source.getProperty("_MainTex_ST");
 			const v = Array.isArray(st)
 				? st

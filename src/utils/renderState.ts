@@ -285,13 +285,32 @@ export const renderStateMappings = {
 	stencilOperationMap,
 };
 
+type AppliedPassState = {
+	mode: LilToonRenderMode;
+	properties: Record<string, unknown>;
+	pass: import("../material/LilToonMaterialParameters.js").LilToonPass;
+	revision: number;
+};
+// Applying state traverses properties and marks Three materials for recompilation; cache that derived state by revision.
+const appliedPassStates = new WeakMap<Material, AppliedPassState>();
+
 /** ShaderLab pass-local state overrides; properties retain their original shader names. */
 export function applyLilToonPassState(
 	material: Material,
 	mode: LilToonRenderMode,
 	properties: Record<string, unknown>,
 	pass: import("../material/LilToonMaterialParameters.js").LilToonPass,
+	revision: number,
 ) {
+	const previous = appliedPassStates.get(material);
+	if (
+		previous?.revision === revision &&
+		previous.mode === mode &&
+		previous.properties === properties &&
+		previous.pass === pass
+	)
+		return;
+
 	const mappedProperties = { ...properties };
 	const prefix =
 		pass === "outline"
@@ -333,4 +352,5 @@ export function applyLilToonPassState(
 		});
 	applyLilToonRenderState(material, mode, mappedProperties);
 	material.forceSinglePass = true;
+	appliedPassStates.set(material, { mode, properties, pass, revision });
 }

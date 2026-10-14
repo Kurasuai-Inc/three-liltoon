@@ -306,22 +306,22 @@ class AutomaticPasses {
 						material.alphaMap = null;
 						material.alphaTest = recipe.source.alphaTest;
 						material.opacity = recipe.source.opacity;
-					const alphaMaskMode = Number(
-						recipe.source.getProperty("_AlphaMaskMode") ?? 0,
-					);
-					const alphaMask = recipe.source.lilToonTextures._AlphaMask ?? null;
-					if (alphaMaskMode !== 0 && !alphaMask)
-						throw new Error(
-							"An enabled lilToon shadow alpha mask requires _AlphaMask texture data.",
+						const alphaMaskMode = Number(
+							recipe.source.getProperty("_AlphaMaskMode") ?? 0,
 						);
-					if (alphaMaskMode !== 0 && !recipe.map)
-						throw new Error(
-							"lilToon shadow alpha masks require the source main texture UV transform.",
-						);
-					// Bind a valid texture even while the mode is disabled: the shadow shader
-					// keeps its sampler declaration whenever Three enables USE_MAP.
-					recipe.shadowAlphaMask.map.value =
-						alphaMaskMode === 0 ? recipe.map : alphaMask;
+						const alphaMask = recipe.source.lilToonTextures._AlphaMask ?? null;
+						if (alphaMaskMode !== 0 && !alphaMask)
+							throw new Error(
+								"An enabled lilToon shadow alpha mask requires _AlphaMask texture data.",
+							);
+						if (alphaMaskMode !== 0 && !recipe.map)
+							throw new Error(
+								"lilToon shadow alpha masks require the source main texture UV transform.",
+							);
+						// Bind a valid texture even while the mode is disabled: the shadow shader
+						// keeps its sampler declaration whenever Three enables USE_MAP.
+						recipe.shadowAlphaMask.map.value =
+							alphaMaskMode === 0 ? recipe.map : alphaMask;
 						recipe.shadowAlphaMask.mode.value = alphaMaskMode;
 						recipe.shadowAlphaMask.scale.value = Number(
 							recipe.source.getProperty("_AlphaMaskScale") ?? 1,

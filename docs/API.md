@@ -71,7 +71,7 @@ Remove models from the scene and dispose their owned geometries, materials and t
 
 ## Scene inputs
 
-- The first visible directional light is the main light. Ambient/hemisphere colors provide an approximate ambient term; additional Unity light passes are unavailable.
+- The first visible directional light is the main light. Ambient lights contribute to SH L0, and hemisphere lights contribute directional first-order SH; additional Unity light passes are unavailable.
 - Set renderer shadow support, the light's `castShadow`, and mesh `castShadow`/`receiveShadow` as in Three.js. This is approximate shadow integration, separate from `_UseShadow` toon-band shading.
 - `scene.environment` supports a `CubeTexture`; raw equirectangular textures and private PMREM state are not consumed.
 - Standard surfaces use Three GPU skinning and position/normal morph transport. Device limits still apply; fur has a separate deformation path described in [rendering modes](RENDERING_MODES.md).

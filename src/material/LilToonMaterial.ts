@@ -188,7 +188,9 @@ export class LilToonMaterial extends RawShaderMaterial {
 			properties[name] = this.#trackPropertyValue(value);
 		return new Proxy(properties, {
 			set: (target, key, value) => {
-				const tracked = this.#trackPropertyValue(value as LilToonScalarOrVector);
+				const tracked = this.#trackPropertyValue(
+					value as LilToonScalarOrVector,
+				);
 				const previous = Reflect.get(target, key, target);
 				const changed = Reflect.set(target, key, tracked, target);
 				if (changed && !Object.is(previous, tracked)) this.#propertyRevision++;
@@ -292,7 +294,9 @@ export class LilToonMaterial extends RawShaderMaterial {
 			program.vertexShader,
 			program.fragmentShader,
 		);
-		this.lilToonProperties = this.#createPropertyBag(propertyDefaults(renderMode));
+		this.lilToonProperties = this.#createPropertyBag(
+			propertyDefaults(renderMode),
+		);
 		this.lilToonTextures = this.#createTextureBag();
 		Object.defineProperty(this, "opacity", {
 			configurable: true,

@@ -145,6 +145,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 	#usedProperties: ReadonlySet<string>;
 	#propertyRevision = 0;
 	#textureRevision = 0;
+	readonly #textureColorSpaces: Readonly<Record<string, "srgb" | "linear">>;
 	#trackedPropertyValues = new WeakMap<object, object>();
 	readonly #startedAt = performance.now();
 
@@ -285,6 +286,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.globalUniforms = globalUniforms;
 		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.#samplerBindings = program.samplerBindings;
+		this.#textureColorSpaces = parameters.textureColorSpaces ?? {};
 		this.#cubeSamplers = cubeSamplers;
 		this.#shaderKey = program.key;
 		this.#program = program;
@@ -521,7 +523,11 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.#textureViews.retain(this.#program.resources);
 		for (const resource of this.#program.resources) {
 			if (resource.property.startsWith("__")) continue;
-			const texture = this.#textureViews.get(resource, this.lilToonTextures);
+			const texture = this.#textureViews.get(
+				resource,
+				this.lilToonTextures,
+				this.#textureColorSpaces,
+			);
 			const isCube = Boolean(
 				(texture as (Texture & { isCubeTexture?: boolean }) | null)
 					?.isCubeTexture,

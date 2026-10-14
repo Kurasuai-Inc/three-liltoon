@@ -18,6 +18,12 @@ import { CubeTextureReader } from "./cubeTextures.js";
 export interface GLTFLilToonExtensionOptions {
 	/** Non-fatal compatibility warnings. Omit to log them to the console. */
 	onWarning?: (warning: LilToonWarning) => void;
+	/** Optional strict format bridge for per-use sampling metadata. */
+	getTextureColorSpace?: (
+		materialIndex: number,
+		property: string,
+		textureIndex?: number,
+	) => "srgb" | "linear" | undefined;
 }
 
 function renderModeFromDefinition(definition: GLTFLilToonMaterialDefinition) {
@@ -54,6 +60,7 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 		if (!definition) return null;
 		return (async () => {
 			const textures: Record<string, Texture> = {};
+			const textureColorSpaces: Record<string, "srgb" | "linear"> = {};
 			for (const [property, info] of Object.entries(
 				definition.cubeTextures ?? {},
 			)) {
@@ -63,12 +70,24 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 				)
 					throw new Error(`Invalid lilToon cubemap property: ${property}`);
 				textures[property] = await this.#cubes.load(info);
+				const colorSpace = this.options.getTextureColorSpace?.(
+					materialIndex,
+					property,
+				);
+				if (colorSpace !== undefined) textureColorSpaces[property] = colorSpace;
 			}
 			await Promise.all(
 				Object.entries(definition.textures ?? {}).map(
 					async ([property, textureInfo]) => {
 						const index =
 							typeof textureInfo === "number" ? textureInfo : textureInfo.index;
+						const colorSpace = this.options.getTextureColorSpace?.(
+							materialIndex,
+							property,
+							index,
+						);
+						if (colorSpace !== undefined)
+							textureColorSpaces[property] = colorSpace;
 						textures[property] = (await this.parser.getDependency(
 							"texture",
 							index,
@@ -90,6 +109,7 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 					? { ...definition.properties, _ReflectionCubeTex_HDR: [1, 1, 0, 0] }
 					: definition.properties,
 				textures,
+				textureColorSpaces,
 				deformation: true,
 			});
 			this.parser.associations.set(material, { materials: materialIndex });

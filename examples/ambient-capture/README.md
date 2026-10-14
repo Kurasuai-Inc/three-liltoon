@@ -47,7 +47,7 @@ Example profile:
 	},
 	"width": 256,
 	"height": 256,
-	"background": "#808080",
+	"background": "#000000",
 	"camera": {
 		"projection": "orthographic",
 		"position": [0, 0, 5],
@@ -78,6 +78,8 @@ reconstruct the probe from sky, equator, or ground colors. Adapter comparison
 profiles instead pass the matching Three ambient and hemisphere inputs. The
 Unity lighting source uses the same packed basis in
 `lil_common_functions.hlsl`'s `lilShadeSH9` evaluation.
+Keep the page background black to match the Unity capture camera's solid-black
+clear color; it affects whole-image pixel statistics even though it is unlit.
 
 Capture the WebGL canvas and its metadata, optionally pairing it with the Unity
 PNG (same pixel dimensions):

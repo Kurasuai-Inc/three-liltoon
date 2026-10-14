@@ -25,6 +25,7 @@ export type LilToonPass =
 	| "fur-pre"
 	| "transparent-pre"
 	| "refraction-blur-pre";
+export type LilToonTextureColorSpace = "srgb" | "linear";
 export type LilToonScalarOrVector =
 	number | boolean | number[] | Color | Vector2 | Vector3 | Vector4;
 
@@ -41,6 +42,8 @@ export interface LilToonMaterialParameters {
 	transparencyMode?: LilToonTransparencyMode;
 	properties?: Record<string, LilToonScalarOrVector>;
 	textures?: Record<string, Texture | null>;
+	/** Effective transfer for each texture binding when supplied by a strict character format. */
+	textureColorSpaces?: Readonly<Record<string, LilToonTextureColorSpace>>;
 	/** Enables the generated skin/morph vertex ABI. Safe for static meshes too. */
 	deformation?: boolean;
 	/** @internal Used by automatic outline rendering. */

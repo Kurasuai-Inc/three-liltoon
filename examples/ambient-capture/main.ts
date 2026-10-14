@@ -1,42 +1,66 @@
 import {
+	AmbientLight,
 	Color,
 	DirectionalLight,
+	HemisphereLight,
+	Mesh,
 	NoToneMapping,
-	PerspectiveCamera,
+	OrthographicCamera,
 	Scene,
 	SRGBColorSpace,
+	SphereGeometry,
 	Vector3,
 	Vector4,
 	WebGLRenderer,
 } from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { GLTFLilToonExtension } from "../../src/loaders/GLTFLilToonExtension.js";
 import { LilToonMaterial } from "../../src/material/LilToonMaterial.js";
 import { enableLilToon } from "../../src/renderer/enableLilToon.js";
 import { packUnitySH9 } from "./unity-sh9.js";
 
 type Vec3 = [number, number, number];
+type LinearRgb = [number, number, number];
 
 type AmbientCaptureProfile = {
 	name: string;
-	modelUrl: string;
+	subject: {
+		kind: "sphere";
+		radius: number;
+		widthSegments: number;
+		heightSegments: number;
+		color: LinearRgb;
+	};
 	width: number;
 	height: number;
 	background: string;
 	camera: {
+		projection: "orthographic";
 		position: Vec3;
 		target: Vec3;
-		fov: number;
+		orthographicSize: number;
 		near: number;
 		far: number;
 	};
+	lighting:
+		| {
+				kind: "unity-probe";
+				sh9: { r: number[]; g: number[]; b: number[] };
+		  }
+		| {
+				kind: "three-adapter";
+				ambient: { color: LinearRgb; intensity: number };
+				hemisphere: {
+					skyColor: LinearRgb;
+					groundColor: LinearRgb;
+					intensity: number;
+					direction: Vec3;
+				};
+		  };
 	directional?: {
 		color: string;
 		intensity: number;
 		position: Vec3;
 		target: Vec3;
 	};
-	sh9: { r: number[]; g: number[]; b: number[] };
 	unity: Record<string, unknown>;
 };
 
@@ -72,26 +96,67 @@ if (!profileResponse.ok)
 const profile = (await profileResponse.json()) as AmbientCaptureProfile;
 if (
 	!profile.name ||
-	!profile.modelUrl ||
+	!profile.subject ||
 	!profile.width ||
 	!profile.height ||
-	!profile.sh9
+	!profile.camera ||
+	!profile.unity ||
+	!profile.lighting
 )
 	throw new Error(
-		"Capture profile requires name, modelUrl, dimensions, and the Unity sh9 coefficients",
+		"Capture profile requires name, subject, dimensions, and a lighting source",
 	);
-const packedSH9 = packUnitySH9(profile.sh9);
+const subjectKind = (profile.subject as { kind: string }).kind;
+if (subjectKind !== "sphere")
+	throw new Error(`Unsupported capture subject kind: ${subjectKind}`);
+if (
+	!Number.isFinite(profile.subject.radius) ||
+	profile.subject.radius <= 0 ||
+	!Number.isInteger(profile.subject.widthSegments) ||
+	profile.subject.widthSegments < 3 ||
+	!Number.isInteger(profile.subject.heightSegments) ||
+	profile.subject.heightSegments < 2 ||
+	profile.subject.color.length !== 3 ||
+	profile.subject.color.some((channel) => !Number.isFinite(channel))
+)
+	throw new Error("Sphere subject has invalid dimensions or linear RGB color");
+const cameraProjection = (profile.camera as { projection: string }).projection;
+if (cameraProjection !== "orthographic")
+	throw new Error(`Unsupported capture camera projection: ${cameraProjection}`);
+const lightingKind = (profile.lighting as { kind: string }).kind;
+if (lightingKind !== "unity-probe" && lightingKind !== "three-adapter")
+	throw new Error(`Unsupported capture lighting kind: ${lightingKind}`);
+const packedSH9 =
+	profile.lighting.kind === "unity-probe"
+		? packUnitySH9(profile.lighting.sh9)
+		: undefined;
 
 const scene = new Scene();
 scene.background = new Color(profile.background);
-const camera = new PerspectiveCamera(
-	profile.camera.fov,
-	profile.width / profile.height,
+const camera = new OrthographicCamera(
+	(-profile.camera.orthographicSize * profile.width) / profile.height,
+	(profile.camera.orthographicSize * profile.width) / profile.height,
+	profile.camera.orthographicSize,
+	-profile.camera.orthographicSize,
 	profile.camera.near,
 	profile.camera.far,
 );
 camera.position.fromArray(profile.camera.position);
 camera.lookAt(new Vector3(...profile.camera.target));
+
+if (profile.lighting.kind === "three-adapter") {
+	const ambient = new AmbientLight(
+		new Color(...profile.lighting.ambient.color),
+		profile.lighting.ambient.intensity,
+	);
+	const hemisphere = new HemisphereLight(
+		new Color(...profile.lighting.hemisphere.skyColor),
+		new Color(...profile.lighting.hemisphere.groundColor),
+		profile.lighting.hemisphere.intensity,
+	);
+	hemisphere.position.fromArray(profile.lighting.hemisphere.direction);
+	scene.add(ambient, hemisphere);
+}
 
 if (profile.directional) {
 	const light = new DirectionalLight(
@@ -114,39 +179,50 @@ renderer.outputColorSpace = SRGBColorSpace;
 renderer.toneMapping = NoToneMapping;
 enableLilToon(renderer);
 
-const loader = new GLTFLoader();
-loader.register((parser) => new GLTFLilToonExtension(parser));
 status.textContent = `Loading ${profile.name}`;
-const gltf = await loader.loadAsync(profile.modelUrl);
 const patchedMaterials = new Set<LilToonMaterial>();
-gltf.scene.traverse((object) => {
-	if (!("material" in object) || !object.material) return;
-	const materials = Array.isArray(object.material)
-		? object.material
-		: [object.material];
-	for (const material of materials) {
-		if (!(material instanceof LilToonMaterial)) continue;
-		if (patchedMaterials.has(material)) continue;
-		patchedMaterials.add(material);
-		const previous = material.onBeforeRender;
-		material.onBeforeRender = (...draw) => {
-			previous.apply(material, draw);
-			applyUnitySH9(material, packedSH9);
-		};
-	}
+const material = new LilToonMaterial({
+	color: new Color(...profile.subject.color),
+	properties: {
+		_UseShadow: 0,
+		_UseShadow2nd: 0,
+		_UseShadow3rd: 0,
+		_UseMatCap: 0,
+		_UseRim: 0,
+		_UseEmission: 0,
+		_UseBumpMap: 0,
+		_UseOutline: 0,
+		_UseMain2ndTex: 0,
+		_LightMinLimit: 0,
+		_LightMaxLimit: 1,
+	},
 });
-if (patchedMaterials.size === 0)
-	throw new Error(`No lilToon materials were loaded from ${profile.modelUrl}`);
-scene.add(gltf.scene);
+const geometry = new SphereGeometry(
+	profile.subject.radius,
+	profile.subject.widthSegments,
+	profile.subject.heightSegments,
+);
+scene.add(new Mesh(geometry, material));
+patchedMaterials.add(material);
+for (const material of patchedMaterials) {
+	if (!packedSH9) continue;
+	const previous = material.onBeforeRender;
+	material.onBeforeRender = (...draw) => {
+		previous.apply(material, draw);
+		applyUnitySH9(material, packedSH9);
+	};
+}
 renderer.render(scene, camera);
 
 window.__CAPTURE_METADATA__ = {
 	profile,
-	modelUrl: profile.modelUrl,
-	sh9: profile.sh9,
+	subject: profile.subject,
+	lighting: profile.lighting,
 	sh9Uniforms: packedSH9,
 	sh9Source:
-		"Unity RenderSettings.ambientProbe SphericalHarmonicsL2, packed into lilToon unity_SH* uniforms",
+		profile.lighting.kind === "unity-probe"
+			? "Unity RenderSettings.ambientProbe SphericalHarmonicsL2, packed into lilToon unity_SH* uniforms"
+			: "Three scene lights adapted to lilToon unity_SH* uniforms",
 	renderer: {
 		width: profile.width,
 		height: profile.height,

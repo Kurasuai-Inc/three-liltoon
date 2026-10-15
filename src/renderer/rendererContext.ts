@@ -60,23 +60,17 @@ class RendererContext {
 			lighting.ambient.b,
 			1,
 		);
-		for (const [name, channel] of [
-			["unity_SHAr", "r"],
-			["unity_SHAg", "g"],
-			["unity_SHAb", "b"],
+		for (const [name, source] of [
+			["unity_SHAr", lighting.unitySHAr],
+			["unity_SHAg", lighting.unitySHAg],
+			["unity_SHAb", lighting.unitySHAb],
+			["unity_SHBr", lighting.unitySHBr],
+			["unity_SHBg", lighting.unitySHBg],
+			["unity_SHBb", lighting.unitySHBb],
+			["unity_SHC", lighting.unitySHC],
 		] as const) {
 			const value = material.globalUniforms[name];
-			if (value instanceof Vector4)
-				value.set(0, 0, 0, lighting.ambient[channel]);
-		}
-		for (const name of [
-			"unity_SHBr",
-			"unity_SHBg",
-			"unity_SHBb",
-			"unity_SHC",
-		]) {
-			const value = material.globalUniforms[name];
-			if (value instanceof Vector4) value.set(0, 0, 0, 0);
+			if (value instanceof Vector4) value.copy(source);
 		}
 		if (Number(material.lilToonProperties._UdonForceSceneLighting ?? 0) !== 0) {
 			material.globalUniforms._LightMinLimit = 0;

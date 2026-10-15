@@ -22,15 +22,26 @@ export class TextureViews {
 	get(
 		resource: ShaderResource,
 		textures: Record<string, Texture | null>,
+		textureColorSpaces: Readonly<Record<string, "srgb" | "linear">> = {},
 	): Texture | null {
 		const source = textures[resource.property];
 		if (!source) return null;
 		const state = samplerState(resource, textures);
-		const signature = JSON.stringify([source.uuid, source.version, ...state]);
+		const colorSpace = textureColorSpaces[resource.property];
+		const signature = JSON.stringify([
+			source.uuid,
+			source.version,
+			colorSpace,
+			...state,
+		]);
 		const existing = this.views.get(resource.uniform);
 		if (existing?.signature === signature) return existing.texture;
 		existing?.texture.dispose();
-		const view = normalizeLilToonTexture(resource.property, source.clone());
+		const view = normalizeLilToonTexture(
+			resource.property,
+			source.clone(),
+			colorSpace,
+		);
 		[view.wrapS, view.wrapT, view.minFilter, view.magFilter, view.anisotropy] =
 			state as [
 				typeof view.wrapS,

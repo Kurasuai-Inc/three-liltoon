@@ -64,20 +64,13 @@ class RendererContext {
 			["unity_SHAr", lighting.unitySHAr],
 			["unity_SHAg", lighting.unitySHAg],
 			["unity_SHAb", lighting.unitySHAb],
+			["unity_SHBr", lighting.unitySHBr],
+			["unity_SHBg", lighting.unitySHBg],
+			["unity_SHBb", lighting.unitySHBb],
+			["unity_SHC", lighting.unitySHC],
 		] as const) {
 			const value = material.globalUniforms[name];
 			if (value instanceof Vector4) value.copy(source);
-		}
-		// Three HemisphereLight is a linear sky-to-ground gradient, so this
-		// adapter only produces L0/L1. Clear every quadratic Unity SH band.
-		for (const name of [
-			"unity_SHBr",
-			"unity_SHBg",
-			"unity_SHBb",
-			"unity_SHC",
-		]) {
-			const value = material.globalUniforms[name];
-			if (value instanceof Vector4) value.set(0, 0, 0, 0);
 		}
 		if (Number(material.lilToonProperties._UdonForceSceneLighting ?? 0) !== 0) {
 			material.globalUniforms._LightMinLimit = 0;

@@ -33,6 +33,17 @@ The mapping follows [Unity's PackCoefficients implementation](https://github.com
 and the shader polynomial in the repository's vendored
 `lil_common_functions.hlsl:lilShadeSH9`.
 
+The scene adapter uses the Unity Trilight probe projection measured in Unity
+2022.3.22f1. For linear colors `S`, `E`, and `G`, the nonzero probe
+coefficients are `c0=(S+4E+G)/6`, `c1=(sqrt(6)/9)*(S-G)`,
+`c6=(5/192)*(2E-S-G)`, and `c8=3*c6`. A pair of adjacent HemisphereLights
+forms those three inputs as first sky, midpoint(first ground, second sky),
+and second ground; their intensities add. A flat `AmbientLight` contributes
+only to `c0`. There is no artificial 0.05 ambient floor: in the corrected
+Unity fixture it changed Flat from Unity's center pixel 60 to 67, independently
+of lilToon's `_LightMinLimit` material clamp. Unity runtime probe values and
+source line references are recorded in `docs/PORTING_EXCEPTIONS.md`.
+
 Example profile:
 
 ```json

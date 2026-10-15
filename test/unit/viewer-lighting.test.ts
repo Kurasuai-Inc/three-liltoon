@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
+	AmbientLight,
+	Color,
 	DirectionalLight,
 	HemisphereLight,
 	PerspectiveCamera,
@@ -45,7 +47,7 @@ describe("viewer fixed lighting", () => {
 		expect(canvasSource).not.toContain("CameraControls");
 	});
 
-	it("encodes HemisphereLight sky-ground direction in Unity SH first-order terms", () => {
+	it("uses Unity SH projection without adding an ambient floor", () => {
 		const scene = new Scene();
 		const hemisphere = new HemisphereLight(0xffffff, 0x000000, 0.5);
 		scene.add(hemisphere);
@@ -53,47 +55,70 @@ describe("viewer fixed lighting", () => {
 
 		const lighting = new LilToonLightAdapter().read(scene);
 		expect(lighting.unitySHAr.x).toBeCloseTo(0);
-		expect(lighting.unitySHAr.y).toBeCloseTo(0.25);
+		expect(lighting.unitySHAr.y).toBeCloseTo((Math.sqrt(6) / 9) * 0.5);
 		expect(lighting.unitySHAr.z).toBeCloseTo(0);
-		expect(lighting.unitySHAr.w).toBeCloseTo(0.3);
-		expect(lighting.unitySHAr.w + lighting.unitySHAr.y).toBeCloseTo(0.55);
-		expect(lighting.unitySHAr.w - lighting.unitySHAr.y).toBeCloseTo(0.05);
+		expect(lighting.unitySHAr.w).toBeCloseTo(0.25);
+		expect(lighting.ambient.r).toBeCloseTo(0.25);
 		expect(lighting.unitySHAg.w).toBeCloseTo(lighting.ambient.g);
 		expect(lighting.unitySHAb.w).toBeCloseTo(lighting.ambient.b);
-
-		// lilToon evaluates the packed A-band as dot(normalWS, xyz) + w.
-		// Compare that function with Three's exact linear hemisphere response.
-		for (const normal of [
-			new Vector3(0, 1, 0),
-			new Vector3(0, -1, 0),
-			new Vector3(1, 0, 0),
-		]) {
-			const packed =
-				lighting.unitySHAr.x * normal.x +
-				lighting.unitySHAr.y * normal.y +
-				lighting.unitySHAr.z * normal.z +
-				lighting.unitySHAr.w;
-			const threeHemisphere = 0.05 + 0.5 * (0.5 * normal.y + 0.5);
-			expect(packed).toBeCloseTo(threeHemisphere);
-		}
 	});
 
-	it("keeps flat ambient in L0 and leaves the HemisphereLight L1 band zero", () => {
+	it("maps Flat AmbientLight to its color with no synthetic baseline", () => {
 		const scene = new Scene();
-		const flat = new HemisphereLight(0x808080, 0x808080, 0.5);
-		scene.add(flat);
+		scene.add(new AmbientLight(new Color(0.21404114, 0.21404114, 0.21404114)));
+		scene.updateMatrixWorld(true);
+
+		const lighting = new LilToonLightAdapter().read(scene);
+		expect(lighting.ambient.r).toBeCloseTo(0.21404114);
+		expect(lighting.unitySHAr.w).toBeCloseTo(0.21404114);
+		expect(lighting.unitySHAr.y).toBe(0);
+	});
+
+	it("packs two adjacent HemisphereLights as one Unity Trilight profile", () => {
+		const scene = new Scene();
+		const first = new HemisphereLight(
+			new Color(0.75, 0.75, 0.75),
+			new Color(0.5, 0.5, 0.5),
+			0.5,
+		);
+		const second = new HemisphereLight(
+			new Color(0.5, 0.5, 0.5),
+			new Color(0.25, 0.25, 0.25),
+			0.5,
+		);
+		scene.add(first, second);
 		scene.updateMatrixWorld(true);
 
 		const lighting = new LilToonLightAdapter().read(scene);
 		expect(lighting.unitySHAr.x).toBeCloseTo(0);
-		expect(lighting.unitySHAr.y).toBeCloseTo(0);
-		expect(lighting.unitySHAr.z).toBeCloseTo(0);
-		expect(lighting.unitySHAr.w).toBeCloseTo(
-			0.05 + flat.color.r * flat.intensity,
+		expect(lighting.unitySHAr.y).toBeCloseTo(
+			(Math.sqrt(6) / 9) * (0.75 - 0.25),
 		);
-		expect(lighting.unitySHAr.w).toBeCloseTo(lighting.ambient.r);
+		expect(lighting.unitySHAr.z).toBeCloseTo(0);
+		// The pair defines sky=.75, equator=(.5+.5)/2, ground=.25;
+		// c0=(S+4E+G)/6 and c1=sqrt(6)/9*(S-G), with c6=c8=0.
+		expect(lighting.unitySHAr.w).toBeCloseTo(0.5);
+		expect(lighting.unitySHBr.x).toBeCloseTo(0);
+		expect(lighting.unitySHBr.z).toBeCloseTo(0);
+		expect(lighting.unitySHC.x).toBeCloseTo(0);
+		expect(lighting.unitySHC.w).toBe(1);
+		expect(lighting.ambient.r).toBeCloseTo(0.5);
 		expect(lighting.unitySHAg.w).toBeCloseTo(lighting.ambient.g);
 		expect(lighting.unitySHAb.w).toBeCloseTo(lighting.ambient.b);
+	});
+
+	it("includes the Unity Trilight quadratic band when the equator is uneven", () => {
+		const scene = new Scene();
+		scene.add(
+			new HemisphereLight(new Color(1, 1, 1), new Color(0.5, 0.5, 0.5), 0.5),
+			new HemisphereLight(new Color(0.75, 0.75, 0.75), new Color(0, 0, 0), 0.5),
+		);
+		scene.updateMatrixWorld(true);
+
+		const lighting = new LilToonLightAdapter().read(scene);
+		const l2 = (5 / 192) * (2 * 0.625 - 1 - 0) * 1;
+		expect(lighting.unitySHBr.z).toBeCloseTo(3 * l2);
+		expect(lighting.unitySHC.x).toBeCloseTo(3 * l2);
 	});
 
 	it("rotates the HemisphereLight gradient with its world-space direction", () => {

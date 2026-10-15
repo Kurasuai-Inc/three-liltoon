@@ -79,6 +79,7 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 			const material = new LilToonMaterial({
 				name: materialDefinition.name,
 				renderMode: renderModeFromDefinition(definition),
+				shaderVariant: definition.shaderVariant,
 				transparencyMode:
 					definition.transparencyMode ??
 					(/TwoPassTransparent/i.test(definition.shaderVariant ?? "")

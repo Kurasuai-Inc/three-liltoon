@@ -8,6 +8,7 @@ export interface SerializedLilToonMaterial {
 	specVersion?: string;
 	lilToonVersion?: string | number;
 	renderMode: LilToonRenderMode;
+	shaderVariant?: string;
 	transparencyMode?: LilToonTransparencyMode;
 	properties: Record<string, LilToonScalarOrVector>;
 	textures: Record<string, string | number | null>;

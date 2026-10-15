@@ -45,7 +45,7 @@ export interface GLTFLilToonMaterialDefinition {
 	specVersion?: "1.0" | "1.1" | "1.2" | typeof LILTOON_GLTF_SPEC_VERSION;
 	/** Source lilToon version, retained as metadata. */
 	lilToonVersion?: string | number;
-	/** Original Unity shader name; does not imply renderer support for that shader. */
+	/** Original Unity shader name; retained for render-mode inference and Outline/Multi semantics, not full shader support. */
 	shaderVariant?: string;
 	/** When omitted, inferred from the original supported shader family. */
 	renderMode?: LilToonRenderMode;

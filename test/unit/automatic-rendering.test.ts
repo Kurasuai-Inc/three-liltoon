@@ -20,15 +20,23 @@ import {
 	type WebGLRenderer,
 } from "three";
 import { LilToonMaterial } from "../../src/material/LilToonMaterial.js";
+import { LilToonMaterialFactory } from "../../src/material/LilToonMaterialFactory.js";
 import { enableLilToon } from "../../src/renderer/enableLilToon.js";
 
 function harness(draw: (scene: Scene) => void) {
 	const renderer = {
-		info: { render: { frame: 0 } },
-		shadowMap: { enabled: false },
+		info: { render: { frame: 0 }, autoReset: true },
+		shadowMap: { enabled: false, autoUpdate: true, needsUpdate: false },
+		autoClear: true,
 		getContext: () => ({ getParameter: () => 32 }),
 		getRenderTarget: () => null,
 		getDrawingBufferSize: (v: Vector2) => v.set(32, 32),
+		getViewport: (v: Vector4) => v.set(0, 0, 32, 32),
+		getScissor: (v: Vector4) => v.set(0, 0, 32, 32),
+		getScissorTest: () => false,
+		setViewport: vi.fn(),
+		setScissor: vi.fn(),
+		setScissorTest: vi.fn(),
 		render(scene: Scene, camera: PerspectiveCamera) {
 			scene.updateMatrixWorld();
 			scene.onBeforeRender(
@@ -50,6 +58,66 @@ const outlined = () =>
 	new LilToonMaterial({ properties: { _UseOutline: 1, _OutlineWidth: 0.1 } });
 
 describe("automatic material inputs", () => {
+	it("draws an Outline shader variant when _UseOutline is zero", () => {
+		const scene = new Scene();
+		const source = new LilToonMaterial({
+			renderMode: "cutout",
+			shaderVariant: "Hidden/lilToonCutoutOutline",
+			properties: { _UseOutline: 0, _OutlineWidth: 0.08 },
+		});
+		const mesh = new Mesh(new BoxGeometry(), source);
+		scene.add(mesh);
+		const renderer = harness(() => {
+			expect(mesh.children).toHaveLength(1);
+		});
+		const release = enableLilToon(renderer);
+		renderer.render(scene, new PerspectiveCamera());
+		const roundTrip = new LilToonMaterialFactory().create(
+			source.toLilToonJSON(),
+		);
+		expect(roundTrip.shaderVariant).toBe("Hidden/lilToonCutoutOutline");
+		expect(roundTrip.featureSet.outline).toBe(true);
+		roundTrip.dispose();
+		release();
+		source.dispose();
+		mesh.geometry.dispose();
+	});
+	it("draws transparent Outline variants through the outline pass", () => {
+		const scene = new Scene();
+		const source = new LilToonMaterial({
+			renderMode: "transparent",
+			transparencyMode: "one-pass",
+			shaderVariant: "Hidden/lilToonOnePassTransparentOutline",
+			properties: { _UseOutline: 0, _OutlineWidth: 0.08 },
+		});
+		const mesh = new Mesh(new BoxGeometry(), source);
+		scene.add(mesh);
+		const camera = new PerspectiveCamera();
+		let renderer: WebGLRenderer;
+		let outlineDraws = 0;
+		renderer = harness((current) => {
+			if (current === scene) {
+				mesh.onAfterRender(
+					renderer,
+					scene,
+					camera,
+					mesh.geometry,
+					source,
+					null!,
+				);
+				return;
+			}
+			const proxy = current.children[0] as Mesh;
+			if ((proxy.material as LilToonMaterial).pass === "outline")
+				outlineDraws++;
+		});
+		const release = enableLilToon(renderer);
+		renderer.render(scene, camera);
+		expect(outlineDraws).toBe(1);
+		release();
+		source.dispose();
+		mesh.geometry.dispose();
+	});
 	it("retains shared scene resources through other scenes and cleans up removed owners", () => {
 		const first = new Scene(),
 			second = new Scene(),

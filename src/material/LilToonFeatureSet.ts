@@ -36,6 +36,7 @@ function colorVisible(value: LilToonScalarOrVector | undefined): boolean {
 
 export function detectLilToonFeatures(
 	properties: Record<string, LilToonScalarOrVector>,
+	shaderVariant?: string,
 ): LilToonFeatureSet {
 	return {
 		main2nd: enabled(properties, "_UseMain2ndTex"),
@@ -54,9 +55,25 @@ export function detectLilToonFeatures(
 		reflection: enabled(properties, "_UseReflection"),
 		anisotropy: enabled(properties, "_UseAnisotropy"),
 		backlight: enabled(properties, "_UseBacklight"),
-		outline: enabled(properties, "_UseOutline"),
+		outline: isLilToonOutlineEnabled(properties, shaderVariant),
 		dissolve:
 			Array.isArray(properties._DissolveParams) &&
 			Number(properties._DissolveParams[0]) !== 0,
 	};
+}
+
+/**
+ * Unity lilToon enables outlines through the Outline shader variant. `_UseOutline`
+ * is the selector only for Multi shaders; it is not the enable flag on Outline variants.
+ * Materials created without source shader metadata retain property-driven behavior.
+ */
+export function isLilToonOutlineEnabled(
+	properties: Record<string, LilToonScalarOrVector>,
+	shaderVariant?: string,
+): boolean {
+	const useOutline = enabled(properties, "_UseOutline");
+	if (shaderVariant === undefined) return useOutline;
+	const name = shaderVariant.split("/").at(-1)?.toLowerCase() ?? "";
+	if (name.includes("multi")) return useOutline;
+	return name.endsWith("outline");
 }

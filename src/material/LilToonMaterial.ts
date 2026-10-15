@@ -133,6 +133,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 	readonly lilToonTextures: Record<string, Texture | null>;
 	globalUniforms: LilToonGlobalUniforms;
 	renderMode: LilToonRenderMode;
+	shaderVariant?: string;
 	pass: LilToonPass;
 	transparencyMode: LilToonTransparencyMode;
 	featureSet: LilToonFeatureSet;
@@ -188,7 +189,9 @@ export class LilToonMaterial extends RawShaderMaterial {
 			properties[name] = this.#trackPropertyValue(value);
 		return new Proxy(properties, {
 			set: (target, key, value) => {
-				const tracked = this.#trackPropertyValue(value as LilToonScalarOrVector);
+				const tracked = this.#trackPropertyValue(
+					value as LilToonScalarOrVector,
+				);
 				const previous = Reflect.get(target, key, target);
 				const changed = Reflect.set(target, key, tracked, target);
 				if (changed && !Object.is(previous, tracked)) this.#propertyRevision++;
@@ -279,6 +282,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 			fog: false,
 		});
 		this.renderMode = renderMode;
+		this.shaderVariant = parameters.shaderVariant;
 		this.pass = pass;
 		this.transparencyMode = parameters.transparencyMode ?? "normal";
 		this.forceSinglePass = true;
@@ -292,7 +296,9 @@ export class LilToonMaterial extends RawShaderMaterial {
 			program.vertexShader,
 			program.fragmentShader,
 		);
-		this.lilToonProperties = this.#createPropertyBag(propertyDefaults(renderMode));
+		this.lilToonProperties = this.#createPropertyBag(
+			propertyDefaults(renderMode),
+		);
 		this.lilToonTextures = this.#createTextureBag();
 		Object.defineProperty(this, "opacity", {
 			configurable: true,
@@ -356,7 +362,10 @@ export class LilToonMaterial extends RawShaderMaterial {
 		if (parameters.map !== undefined) this.map = parameters.map;
 		if (parameters.alphaTest !== undefined)
 			this.alphaTest = parameters.alphaTest;
-		this.featureSet = detectLilToonFeatures(this.lilToonProperties);
+		this.featureSet = detectLilToonFeatures(
+			this.lilToonProperties,
+			this.shaderVariant,
+		);
 		applyLilToonPassState(
 			this,
 			this.renderMode,
@@ -456,7 +465,10 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.lilToonProperties[name] = copyValue(value);
 		setGlobalProperty(this.globalUniforms, name, value);
 		if (name === "_Color") this.readColor();
-		this.featureSet = detectLilToonFeatures(this.lilToonProperties);
+		this.featureSet = detectLilToonFeatures(
+			this.lilToonProperties,
+			this.shaderVariant,
+		);
 		if (
 			/(_Cull|_ZWrite|_ZTest|_Blend|_Stencil|_Offset|_ColorMask|_AlphaToMask)/.test(
 				name,
@@ -504,6 +516,9 @@ export class LilToonMaterial extends RawShaderMaterial {
 			specVersion: LILTOON_GLTF_SPEC_VERSION,
 			lilToonVersion: LILTOON_UPSTREAM_DESCRIPTION,
 			renderMode: this.renderMode,
+			...(this.shaderVariant === undefined
+				? {}
+				: { shaderVariant: this.shaderVariant }),
 			properties,
 			transparencyMode: this.transparencyMode,
 			textures,
@@ -548,6 +563,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.#morphWeights.dispose();
 		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.renderMode = source.renderMode;
+		this.shaderVariant = source.shaderVariant;
 		this.pass = source.pass;
 		this.transparencyMode = source.transparencyMode;
 		this.#shaderKey = source.#shaderKey;

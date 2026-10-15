@@ -106,3 +106,13 @@ The script writes the Three PNG, metadata JSON, side-by-side PNG, and mean
 absolute RGB error. It fails on mismatched image dimensions or a WebGL load
 error. Keep source assets read-only and place every output under the task's
 `out/` directory.
+
+## Unity ambient parity capture
+
+The 4090 ANGLE D3D11 sphere capture matched the Unity r7c center pixels after
+removing the synthetic ambient floor and packing Unity's measured SH9 terms:
+Flat `60` (before `67`, after `60`) and Trilight `81` (before `72`, after
+`81`). The comparison image keeps Unity, the prior adapter, and the updated
+adapter side by side:
+
+![Unity and three-liltoon ambient comparison](results/ambient-parity-20261016.png)

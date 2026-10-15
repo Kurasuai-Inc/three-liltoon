@@ -35,6 +35,8 @@ export interface LilToonMaterialParameters {
 	alphaTest?: number;
 	name?: string;
 	renderMode?: LilToonRenderMode;
+	/** Original Unity shader name; lilToon uses Outline shader variants to enable its outline pass. */
+	shaderVariant?: string;
 	/** Unity transparent pass configuration; additional-light passes remain deferred. */
 	transparencyMode?: LilToonTransparencyMode;
 	properties?: Record<string, LilToonScalarOrVector>;

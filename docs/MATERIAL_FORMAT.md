@@ -55,7 +55,7 @@ Extension name: `MOCHIYA_materials_liltoon`.
 }
 ```
 
-Each texture value may be a glTF texture index or an object with `index` and optional `texCoord`. The loader resolves `index`; it does not implement UV-channel remapping from `texCoord`. With `renderMode` omitted, it infers the mode from the Unity `shaderVariant` name, falling back to opaque. Explicit `renderMode` takes precedence. `transparencyMode` similarly uses the explicit value, a OnePass/TwoPass shader-name match, or normal. These shader-name fallbacks apply to glTF loading, not the standalone material factory.
+Each texture value may be a glTF texture index or an object with `index` and optional `texCoord`. The loader resolves `index`; it does not implement UV-channel remapping from `texCoord`. With `renderMode` omitted, it infers the mode from the Unity `shaderVariant` name, falling back to opaque. Explicit `renderMode` takes precedence. `transparencyMode` similarly uses the explicit value, a OnePass/TwoPass shader-name match, or normal. The loaded material retains `shaderVariant`: an Outline variant enables the outline pass even when `_UseOutline` is zero; Multi variants use `_UseOutline` as their selector. These shader-name rules apply to glTF loading and are preserved by the standalone material factory.
 
 Current extension version is `1.3`. Versions `1.0`, `1.1` and `1.2` remain readable. Embedded cubemaps require a reader supporting `cubeTextures`. Other versions warn and load best-effort.
 

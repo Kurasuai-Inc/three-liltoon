@@ -27,7 +27,7 @@ const material = new LilToonMaterial({
 const release = enableLilToon(renderer);
 ```
 
-`transparencyMode` applies only to transparent. Normal and OnePass share the base/outline sequence while ForwardAdd is deferred; their identities remain distinct. TwoPass draws upstream `LIL_TRANSPARENT_PRE` with `_Pre*` state before the surface. All three draw their optional transparent outline afterward using `_Outline*` state. Three's implicit double-sided split is disabled. These sequences apply per material group and follow source deformation.
+`transparencyMode` applies only to transparent. Normal and OnePass share the base/outline sequence while ForwardAdd is deferred; their identities remain distinct. TwoPass draws upstream `LIL_TRANSPARENT_PRE` with `_Pre*` state before the surface. All three draw their optional transparent outline afterward using `_Outline*` state. An original `shaderVariant` ending in `Outline` enables that pass; `_UseOutline` selects the feature only for Multi variants. Three's implicit double-sided split is disabled. These sequences apply per material group and follow source deformation.
 
 Direct transparent materials use upstream ShaderLab defaults, including `_ZWrite: 1` and `_SrcBlend: 1`. Exported/explicit properties override defaults. The upstream pass named FORWARD_BACK uses configurable `_PreCull`; it does not unconditionally cull front faces. Outline remains a setting/pass, not a rendering mode.
 

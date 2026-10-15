@@ -5,6 +5,7 @@ import {
 	type WebGLRenderer,
 } from "three";
 import { LilToonMaterial } from "../material/LilToonMaterial.js";
+import { isLilToonOutlineEnabled } from "../material/LilToonFeatureSet.js";
 import { AuxiliaryPassDraw } from "./AuxiliaryPassDraw.js";
 
 /** Unity surface pass order, excluding deferred ForwardAdd and shadow parity. */
@@ -64,7 +65,10 @@ export class TransparencyPasses {
 				if (
 					isSurface(source) &&
 					!manual &&
-					Number(source.lilToonProperties._UseOutline ?? 1) !== 0 &&
+					isLilToonOutlineEnabled(
+						source.lilToonProperties,
+						source.shaderVariant,
+					) &&
 					Number(source.lilToonProperties._OutlineWidth ?? 0) > 0
 				)
 					this.draws.draw(

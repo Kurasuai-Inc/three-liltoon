@@ -44,7 +44,24 @@ describe("special modes", () => {
 			)) as LilToonMaterial;
 			expect(m.renderMode).toBe(mode);
 			expect(m.transparencyMode).toBe(transparency);
+			expect(m.shaderVariant).toBe(shaderVariant);
+			expect(m.featureSet.outline).toBe(/Outline$/i.test(shaderVariant));
 			m.dispose();
+		},
+	);
+	it.each([
+		["Hidden/lilToonMulti", 0, false],
+		["Hidden/lilToonMulti", 1, true],
+		["Hidden/lilToonCutout", 1, false],
+	] as const)(
+		"uses _UseOutline only for %s",
+		(shaderVariant, useOutline, expected) => {
+			const material = new LilToonMaterial({
+				shaderVariant,
+				properties: { _UseOutline: useOutline },
+			});
+			expect(material.featureSet.outline).toBe(expected);
+			material.dispose();
 		},
 	);
 	it.each(["normal", "one-pass", "two-pass"] as const)(

@@ -21,7 +21,8 @@ function temporaryDirectory(): string {
 describe("shader toolchain executable discovery", () => {
 	it("resolves Windows executables through PATHEXT", () => {
 		const directory = temporaryDirectory();
-		const executable = join(directory, "dxc.exe");
+		// Uppercase PATHEXT entries are normal on Windows; matching case keeps this fixture portable on Linux.
+		const executable = join(directory, "dxc.EXE");
 		writeFileSync(executable, "");
 
 		const result = executableOnPath("dxc", {

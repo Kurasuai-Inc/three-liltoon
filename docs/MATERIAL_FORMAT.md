@@ -7,7 +7,7 @@
 ```json
 {
 	"specVersion": "1.3",
-	"lilToonVersion": "2.3.4-3-g72fc096",
+	"lilToonVersion": "2.3.1",
 	"renderMode": "opaque",
 	"properties": {
 		"_Color": [0.91, 0.35, 0.48, 1],
@@ -35,7 +35,7 @@ Extension name: `MOCHIYA_materials_liltoon`.
 			"extensions": {
 				"MOCHIYA_materials_liltoon": {
 					"specVersion": "1.3",
-					"lilToonVersion": "2.3.4-3-g72fc096",
+					"lilToonVersion": "2.3.1",
 					"shaderVariant": "lilToon",
 					"renderMode": "opaque",
 					"properties": {

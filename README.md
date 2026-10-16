@@ -27,13 +27,13 @@ npm install @pixiv/three-vrm
 
 The package includes built runtime files; consumers do not need Unity, the lilToon submodule or shader compiler tools.
 
-| Component                | Runtime and tested setup                                                      |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| Renderer                 | Three.js `WebGLRenderer`, WebGL2                                              |
-| Three.js                 | Tested with 0.180.0 and 0.185.1; use one shared copy in the application       |
-| Optional VRM integration | Tested with `@pixiv/three-vrm` 3.5.5                                          |
-| Package format           | ESM with TypeScript declarations                                              |
-| Upstream shader baseline | lilToon `2.3.4-3-g72fc096`, commit `72fc09625b24c9a750591c286e9192512a5177a1` |
+| Component                | Runtime and tested setup                                                |
+| ------------------------ | ----------------------------------------------------------------------- |
+| Renderer                 | Three.js `WebGLRenderer`, WebGL2                                        |
+| Three.js                 | Tested with 0.180.0 and 0.185.1; use one shared copy in the application |
+| Optional VRM integration | Tested with `@pixiv/three-vrm` 3.5.5                                    |
+| Package format           | ESM with TypeScript declarations                                        |
+| Upstream shader baseline | lilToon `2.3.1`, commit `c7544c9dbe88a9de2bc562bfde24a9159c6b9236`      |
 
 WebGPU and WebXR are not supported by this backend. Some effects have additional GPU requirements; see the [rendering modes reference](https://github.com/mochiya-labs/three-liltoon/blob/main/docs/RENDERING_MODES.md).
 

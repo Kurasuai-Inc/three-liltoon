@@ -109,10 +109,17 @@ const description = execFileSync("git", ["describe", "--tags", "--always"], {
 	cwd: LILTOON_ROOT,
 	encoding: "utf8",
 }).trim();
-const versionFile = JSON.parse(
-	readFileSync(resolve(LILTOON_ROOT, "version.json"), "utf8"),
-) as Record<string, unknown>;
-const version = String(versionFile.latest_vertion_name ?? description);
+// lilToon's version.json still reports 2.1.1 inside the official 2.3.1 tag.
+// Require the exact pinned source tag so generated runtime metadata names the
+// shader sources that this package actually compiles.
+const version = execFileSync(
+	"git",
+	["describe", "--tags", "--exact-match", "HEAD"],
+	{
+		cwd: LILTOON_ROOT,
+		encoding: "utf8",
+	},
+).trim();
 
 const banner =
 	"// Generated from vendor/lilToon/Assets/lilToon/Shader/lts.shader. Do not edit.\n";

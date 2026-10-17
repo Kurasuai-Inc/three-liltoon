@@ -165,6 +165,15 @@ export function verifySpecializationRendering() {
 			mode === "opaque" ? alpha[3] === 255 : alpha[3] === 0;
 		checks[`${mode}/diagnostics`] = alphaMaterial.getWarnings().length === 0;
 	}
+	const zeroAlphaCutout = new LilToonMaterial({
+		renderMode: "cutout",
+		properties: { ...defaults, _Color: [1, 1, 1, 0], _Cutoff: 0 },
+		textures: { _MainTex: white },
+	});
+	const zeroAlphaCutoutPixel = h.render(zeroAlphaCutout);
+	checks["cutout/passed-fragment-writes-opaque-alpha"] =
+		zeroAlphaCutoutPixel[3] === 255;
+	zeroAlphaCutout.dispose();
 	const material = new LilToonMaterial({
 		properties: {
 			...defaults,

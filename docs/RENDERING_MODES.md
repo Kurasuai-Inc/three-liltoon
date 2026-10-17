@@ -16,6 +16,8 @@ The nine regular lilToon Rendering Modes have runtime implementations, with the 
 | Fur (2 pass)    | `fur-two-pass`    | Surface, fur prepass, transparent ribbons                 |
 | Gem             | `gem`             | Capture, black prepass, gem surface                       |
 
+Cutout surfaces write opaque alpha for every fragment that passes the alpha test. This matches glTF `MASK` semantics and keeps cutout materials opaque when the WebGL canvas itself is transparent; the cutoff still decides which fragments are discarded.
+
 ```ts
 import { LilToonMaterial, enableLilToon } from "@mochiya/three-liltoon";
 

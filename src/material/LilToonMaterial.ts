@@ -119,7 +119,10 @@ function getEffectiveOutputColorSpace(renderer: WebGLRenderer): string {
 	return ColorManagement.workingColorSpace;
 }
 
-function addOutputColorSpaceConversion(fragmentShader: string): string {
+function addOutputColorSpaceConversion(
+	fragmentShader: string,
+	forceOpaqueAlpha: boolean,
+): string {
 	const globalsIndex = fragmentShader.indexOf("struct type_Globals");
 	const mainEnd = fragmentShader.lastIndexOf("\n}");
 	if (globalsIndex < 0 || mainEnd < 0) return fragmentShader;
@@ -129,6 +132,9 @@ function addOutputColorSpaceConversion(fragmentShader: string): string {
 		fragmentShader.slice(globalsIndex);
 	const adjustedMainEnd =
 		mainEnd + `uniform uint ${OUTPUT_SRGB_UNIFORM};\n\n`.length;
+	const opaqueAlphaWrite = forceOpaqueAlpha
+		? "    // A passing cutout fragment is opaque even when its source alpha is below one.\n    out_var_SV_Target.a = 1.0;\n"
+		: "";
 	const conversion = `
     if (${OUTPUT_SRGB_UNIFORM} != 0u)
     {
@@ -139,6 +145,7 @@ function addOutputColorSpaceConversion(fragmentShader: string): string {
             lessThanEqual(linearColor, vec3(0.0031308))
         );
     }
+${opaqueAlphaWrite}
 `;
 	return `${withUniform.slice(0, adjustedMainEnd)}${conversion}${withUniform.slice(adjustedMainEnd)}`;
 }
@@ -293,6 +300,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 			).replace(/^#version 300 es\s*/, ""),
 			fragmentShader: addOutputColorSpaceConversion(
 				program.fragmentShader,
+				renderMode === "cutout",
 			).replace(/^#version 300 es\s*/, ""),
 			glslVersion: GLSL3,
 			uniforms,
@@ -694,6 +702,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		).replace(/^#version 300 es\s*/, "");
 		this.fragmentShader = addOutputColorSpaceConversion(
 			program.fragmentShader,
+			this.renderMode === "cutout",
 		).replace(/^#version 300 es\s*/, "");
 		this.globalUniforms = createGlobalUniforms(
 			program.vertexShader,

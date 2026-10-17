@@ -73,7 +73,12 @@ export function compareCanvasAndSrgbRenderTarget() {
 	};
 
 	const cases = unitySamples.map((sample) => {
-		material.color.setRGB(...sample.linear, LinearSRGBColorSpace);
+		material.color.setRGB(
+			sample.linear[0],
+			sample.linear[1],
+			sample.linear[2],
+			LinearSRGBColorSpace,
+		);
 		renderer.setRenderTarget(null);
 		renderer.render(scene, camera);
 		const canvasPixel = new Uint8Array(4);

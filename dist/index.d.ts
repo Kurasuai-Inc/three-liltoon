@@ -1,7 +1,7 @@
-import { S as SerializedLilToonMaterial, L as LilToonMaterial, a as LilToonGlobalUniforms, b as LilToonMaterialParameters } from './gltf-DX6LhSiy.js';
-export { c as LILTOON_GLTF_EXTENSION, d as LILTOON_GLTF_SPEC_VERSION, e as LilToonFeatureSet, f as LilToonMaterialLoader, g as LilToonRenderMode, h as LilToonScalarOrVector, i as LilToonTransparencyMode, j as detectLilToonFeatures } from './gltf-DX6LhSiy.js';
-import { WebGLRenderer, Texture, Scene, DirectionalLight, Vector3, Color } from 'three';
-export { a as GLTFLilToonExtension, G as GLTFLilToonExtensionOptions, L as LilToonWarning, b as LilToonWarningCode } from './GLTFLilToonExtension-2SkJrHyN.js';
+import { S as SerializedLilToonMaterial, L as LilToonMaterial, a as LilToonGlobalUniforms, b as LilToonMaterialParameters } from './gltf-DAuXvw6Z.js';
+export { c as LILTOON_GLTF_EXTENSION, d as LILTOON_GLTF_SPEC_VERSION, e as LilToonFeatureSet, f as LilToonMaterialLoader, g as LilToonRenderMode, h as LilToonScalarOrVector, i as LilToonTransparencyMode, j as detectLilToonFeatures } from './gltf-DAuXvw6Z.js';
+import { WebGLRenderer, Texture, Scene, DirectionalLight, Vector3, Color, Vector4 } from 'three';
+export { a as GLTFLilToonExtension, G as GLTFLilToonExtensionOptions, L as LilToonWarning, b as LilToonWarningCode } from './GLTFLilToonExtension-Da4AOnBM.js';
 import 'three/examples/jsm/loaders/GLTFLoader.js';
 
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
@@ -16,6 +16,13 @@ interface LilToonSceneLighting {
     direction: Vector3;
     color: Color;
     ambient: Color;
+    unitySHAr: Vector4;
+    unitySHAg: Vector4;
+    unitySHAb: Vector4;
+    unitySHBr: Vector4;
+    unitySHBg: Vector4;
+    unitySHBb: Vector4;
+    unitySHC: Vector4;
 }
 declare class LilToonLightAdapter {
     read(scene: Scene): LilToonSceneLighting;
@@ -5556,8 +5563,8 @@ declare const LILTOON_RENDER_RECIPES: {
     };
 };
 
-declare const LILTOON_UPSTREAM_COMMIT = "72fc09625b24c9a750591c286e9192512a5177a1";
-declare const LILTOON_UPSTREAM_VERSION = "2.1.1";
+declare const LILTOON_UPSTREAM_COMMIT = "c7544c9dbe88a9de2bc562bfde24a9159c6b9236";
+declare const LILTOON_UPSTREAM_VERSION = "2.3.1";
 declare const THREE_VERSION_RANGE = ">=0.180.0 <0.190.0";
 
 type LilToonTextureSemantic = "color" | "normal" | "data";

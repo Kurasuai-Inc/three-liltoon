@@ -1,4 +1,4 @@
-import { Vector3, Matrix4, Vector2, CubeTexture, Vector4, Color, AmbientLight, HemisphereLight, RawShaderMaterial, GLSL3, SRGBColorSpace, DirectionalLight, DataTexture, RGBAFormat, UnsignedByteType, RepeatWrapping, LinearFilter, CustomBlending, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, RedFormat, FloatType, HalfFloatType, LinearSRGBColorSpace, LinearMipmapLinearFilter, ClampToEdgeWrapping, LinearMipmapNearestFilter, ShaderChunk, BufferAttribute, FrontSide, BackSide, DoubleSide, LessEqualDepth, AlwaysDepth, GreaterEqualDepth, NotEqualDepth, GreaterDepth, EqualDepth, LessDepth, NeverDepth, SrcAlphaFactor, OneMinusSrcAlphaFactor, SrcAlphaSaturateFactor, OneMinusDstAlphaFactor, DstAlphaFactor, OneMinusSrcColorFactor, OneMinusDstColorFactor, SrcColorFactor, DstColorFactor, OneFactor, ZeroFactor, AddEquation, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, AlwaysStencilFunc, GreaterEqualStencilFunc, NotEqualStencilFunc, GreaterStencilFunc, LessEqualStencilFunc, EqualStencilFunc, LessStencilFunc, NeverStencilFunc, KeepStencilOp, DecrementWrapStencilOp, IncrementWrapStencilOp, InvertStencilOp, DecrementStencilOp, IncrementStencilOp, ReplaceStencilOp, ZeroStencilOp } from 'three';
+import { Vector3, Matrix4, Vector2, CubeTexture, Vector4, Color, AmbientLight, RawShaderMaterial, GLSL3, SRGBColorSpace, DirectionalLight, HemisphereLight, DataTexture, RGBAFormat, UnsignedByteType, RepeatWrapping, LinearFilter, CustomBlending, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, RedFormat, FloatType, ColorManagement, HalfFloatType, LinearSRGBColorSpace, LinearMipmapLinearFilter, ClampToEdgeWrapping, LinearMipmapNearestFilter, ShaderChunk, BufferAttribute, FrontSide, BackSide, DoubleSide, LessEqualDepth, AlwaysDepth, GreaterEqualDepth, NotEqualDepth, GreaterDepth, EqualDepth, LessDepth, NeverDepth, SrcAlphaFactor, OneMinusSrcAlphaFactor, SrcAlphaSaturateFactor, OneMinusDstAlphaFactor, DstAlphaFactor, OneMinusSrcColorFactor, OneMinusDstColorFactor, SrcColorFactor, DstColorFactor, OneFactor, ZeroFactor, AddEquation, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, AlwaysStencilFunc, GreaterEqualStencilFunc, NotEqualStencilFunc, GreaterStencilFunc, LessEqualStencilFunc, EqualStencilFunc, LessStencilFunc, NeverStencilFunc, KeepStencilOp, DecrementWrapStencilOp, IncrementWrapStencilOp, InvertStencilOp, DecrementStencilOp, IncrementStencilOp, ReplaceStencilOp, ZeroStencilOp } from 'three';
 
 // src/generated/textureSemantics.ts
 var LILTOON_TEXTURE_SEMANTICS = {
@@ -1371,9 +1371,9 @@ var LILTOON_MODE_DEFAULTS = {
 };
 
 // src/generated/compatibility.ts
-var LILTOON_UPSTREAM_COMMIT = "72fc09625b24c9a750591c286e9192512a5177a1";
-var LILTOON_UPSTREAM_VERSION = "2.1.1";
-var LILTOON_UPSTREAM_DESCRIPTION = "2.3.4-3-g72fc096";
+var LILTOON_UPSTREAM_COMMIT = "c7544c9dbe88a9de2bc562bfde24a9159c6b9236";
+var LILTOON_UPSTREAM_VERSION = "2.3.1";
+var LILTOON_UPSTREAM_DESCRIPTION = "2.3.1";
 var THREE_VERSION_RANGE = ">=0.180.0 <0.190.0";
 
 // src/utils/diagnostics.ts
@@ -1410,20 +1410,96 @@ var LilToonEnvironmentAdapter = class {
 };
 var lightPosition = new Vector3();
 var targetPosition = new Vector3();
+var hemisphereDirection = new Vector3();
+var secondHemisphereDirection = new Vector3();
+var TRILIGHT_L1_SCALE = Math.sqrt(6) / 9;
+function addTrilightProbe(coefficients, sky, equator, ground, intensity, direction) {
+  for (const [channel, s, e, g] of [
+    [0, sky.r, equator.r, ground.r],
+    [1, sky.g, equator.g, ground.g],
+    [2, sky.b, equator.b, ground.b]
+  ]) {
+    coefficients[channel][0] += (s + 4 * e + g) / 6 * intensity;
+    const l1 = TRILIGHT_L1_SCALE * (s - g) * intensity;
+    coefficients[channel][1] += l1 * direction.y;
+    coefficients[channel][2] += l1 * direction.z;
+    coefficients[channel][3] += l1 * direction.x;
+    const l2 = 5 / 192 * (2 * e - s - g) * intensity;
+    if (Math.abs(l2) > 1e-8 && Math.abs(direction.x) + Math.abs(direction.z) > 1e-8)
+      throw new Error(
+        "Uneven Trilight HemisphereLight groups must point along world Y"
+      );
+    coefficients[channel][6] += l2;
+    coefficients[channel][8] += 3 * l2;
+  }
+}
 var LilToonLightAdapter = class {
   read(scene) {
     let main;
-    const ambient = new Color(0.05, 0.05, 0.05);
+    const ambient = new Color(0, 0, 0);
+    const sh9 = [
+      Array(9).fill(0),
+      Array(9).fill(0),
+      Array(9).fill(0)
+    ];
+    const unitySHAr = new Vector4();
+    const unitySHAg = new Vector4();
+    const unitySHAb = new Vector4();
+    const unitySHBr = new Vector4();
+    const unitySHBg = new Vector4();
+    const unitySHBb = new Vector4();
+    const unitySHC = new Vector4(0, 0, 0, 1);
+    const hemispheres = [];
     scene.traverseVisible((object) => {
       if (!main && object instanceof DirectionalLight) main = object;
-      if (object instanceof AmbientLight)
-        ambient.add(object.color.clone().multiplyScalar(object.intensity));
-      if (object instanceof HemisphereLight) {
-        ambient.add(
-          object.color.clone().add(object.groundColor).multiplyScalar(object.intensity * 0.5)
+      if (object instanceof AmbientLight) {
+        const contribution = object.color.clone().multiplyScalar(object.intensity);
+        ambient.add(contribution);
+        sh9[0][0] += contribution.r;
+        sh9[1][0] += contribution.g;
+        sh9[2][0] += contribution.b;
+      }
+      if (object instanceof HemisphereLight) hemispheres.push(object);
+    });
+    for (let index = 0; index < hemispheres.length; index += 1) {
+      const first = hemispheres[index];
+      const second = hemispheres[index + 1];
+      first.getWorldPosition(hemisphereDirection).normalize();
+      second?.getWorldPosition(secondHemisphereDirection).normalize();
+      if (second && hemisphereDirection.distanceTo(secondHemisphereDirection) < 1e-8) {
+        const intensity = first.intensity + second.intensity;
+        const equator = first.groundColor.clone().add(second.color).multiplyScalar(0.5);
+        addTrilightProbe(
+          sh9,
+          first.color,
+          equator,
+          second.groundColor,
+          intensity,
+          hemisphereDirection
+        );
+        index += 1;
+      } else {
+        const equator = first.color.clone().add(first.groundColor).multiplyScalar(0.5);
+        addTrilightProbe(
+          sh9,
+          first.color,
+          equator,
+          first.groundColor,
+          first.intensity,
+          hemisphereDirection
         );
       }
-    });
+    }
+    for (const [values, targetA, targetB] of [
+      [sh9[0], unitySHAr, unitySHBr],
+      [sh9[1], unitySHAg, unitySHBg],
+      [sh9[2], unitySHAb, unitySHBb]
+    ]) {
+      targetA.set(values[3], values[1], values[2], values[0] - values[6]);
+      targetB.set(values[4], values[5], 3 * values[6], values[7]);
+    }
+    unitySHC.set(sh9[0][8], sh9[1][8], sh9[2][8], 1);
+    ambient.set(sh9[0][0], sh9[1][0], sh9[2][0]);
     const direction = new Vector3();
     const color = new Color(0, 0, 0);
     if (main) {
@@ -1432,7 +1508,19 @@ var LilToonLightAdapter = class {
       direction.subVectors(lightPosition, targetPosition).normalize();
       color.copy(main.color).multiplyScalar(main.intensity);
     }
-    return { main, direction, color, ambient };
+    return {
+      main,
+      direction,
+      color,
+      ambient,
+      unitySHAr,
+      unitySHAg,
+      unitySHAb,
+      unitySHBr,
+      unitySHBg,
+      unitySHBb,
+      unitySHC
+    };
   }
 };
 var neutralTextures = /* @__PURE__ */ new Map();
@@ -1471,10 +1559,10 @@ function getNeutralTexture(name = "white") {
   neutralTextures.set(name, texture);
   return texture;
 }
-function normalizeLilToonTexture(property, texture) {
+function normalizeLilToonTexture(property, texture, colorSpace) {
   const semantic = LILTOON_TEXTURE_SEMANTICS[property];
-  if (!texture.isCubeTexture)
-    texture.colorSpace = semantic === "color" ? SRGBColorSpace : LinearSRGBColorSpace;
+  if (!texture.isCubeTexture || colorSpace !== void 0)
+    texture.colorSpace = colorSpace === void 0 ? semantic === "color" ? SRGBColorSpace : LinearSRGBColorSpace : colorSpace === "srgb" ? SRGBColorSpace : LinearSRGBColorSpace;
   texture.flipY = false;
   texture.wrapS ||= RepeatWrapping;
   texture.wrapT ||= RepeatWrapping;
@@ -1517,7 +1605,7 @@ function colorVisible(value) {
   if (Array.isArray(value)) return Number(value[3] ?? value[0] ?? 0) !== 0;
   return typeof value === "number" && value !== 0;
 }
-function detectLilToonFeatures(properties) {
+function detectLilToonFeatures(properties, shaderVariant) {
   return {
     main2nd: enabled(properties, "_UseMain2ndTex"),
     main3rd: enabled(properties, "_UseMain3rdTex"),
@@ -1533,9 +1621,16 @@ function detectLilToonFeatures(properties) {
     reflection: enabled(properties, "_UseReflection"),
     anisotropy: enabled(properties, "_UseAnisotropy"),
     backlight: enabled(properties, "_UseBacklight"),
-    outline: enabled(properties, "_UseOutline"),
+    outline: isLilToonOutlineEnabled(properties, shaderVariant),
     dissolve: Array.isArray(properties._DissolveParams) && Number(properties._DissolveParams[0]) !== 0
   };
+}
+function isLilToonOutlineEnabled(properties, shaderVariant) {
+  const useOutline = enabled(properties, "_UseOutline");
+  if (shaderVariant === void 0) return useOutline;
+  const name = shaderVariant.split("/").at(-1)?.toLowerCase() ?? "";
+  if (name.includes("multi")) return useOutline;
+  return name.endsWith("outline");
 }
 
 // src/loaders/types.ts
@@ -1543,15 +1638,25 @@ var LILTOON_GLTF_EXTENSION = "MOCHIYA_materials_liltoon";
 var LILTOON_GLTF_SPEC_VERSION = "1.3";
 var TextureViews = class {
   views = /* @__PURE__ */ new Map();
-  get(resource, textures) {
+  get(resource, textures, textureColorSpaces = {}) {
     const source = textures[resource.property];
     if (!source) return null;
     const state = samplerState(resource, textures);
-    const signature = JSON.stringify([source.uuid, source.version, ...state]);
+    const colorSpace = textureColorSpaces[resource.property];
+    const signature = JSON.stringify([
+      source.uuid,
+      source.version,
+      colorSpace,
+      ...state
+    ]);
     const existing = this.views.get(resource.uniform);
     if (existing?.signature === signature) return existing.texture;
     existing?.texture.dispose();
-    const view = normalizeLilToonTexture(resource.property, source.clone());
+    const view = normalizeLilToonTexture(
+      resource.property,
+      source.clone(),
+      colorSpace
+    );
     [view.wrapS, view.wrapT, view.minFilter, view.magFilter, view.anisotropy] = state;
     if (!view.generateMipmaps && view.mipmaps.length === 0 && view.minFilter !== LinearFilter && view.minFilter !== NearestFilter)
       view.minFilter = view.minFilter === NearestMipmapNearestFilter || view.minFilter === NearestMipmapLinearFilter ? NearestFilter : LinearFilter;
@@ -1818,23 +1923,17 @@ var RendererContext = class {
       lighting.ambient.b,
       1
     );
-    for (const [name, channel] of [
-      ["unity_SHAr", "r"],
-      ["unity_SHAg", "g"],
-      ["unity_SHAb", "b"]
+    for (const [name, source] of [
+      ["unity_SHAr", lighting.unitySHAr],
+      ["unity_SHAg", lighting.unitySHAg],
+      ["unity_SHAb", lighting.unitySHAb],
+      ["unity_SHBr", lighting.unitySHBr],
+      ["unity_SHBg", lighting.unitySHBg],
+      ["unity_SHBb", lighting.unitySHBb],
+      ["unity_SHC", lighting.unitySHC]
     ]) {
       const value = material.globalUniforms[name];
-      if (value instanceof Vector4)
-        value.set(0, 0, 0, lighting.ambient[channel]);
-    }
-    for (const name of [
-      "unity_SHBr",
-      "unity_SHBg",
-      "unity_SHBb",
-      "unity_SHC"
-    ]) {
-      const value = material.globalUniforms[name];
-      if (value instanceof Vector4) value.set(0, 0, 0, 0);
+      if (value instanceof Vector4) value.copy(source);
     }
     if (Number(material.lilToonProperties._UdonForceSceneLighting ?? 0) !== 0) {
       material.globalUniforms._LightMinLimit = 0;
@@ -6773,7 +6872,11 @@ function applyLilToonRenderState(material, renderMode, properties) {
   material.alphaToCoverage = numeric(properties, "_AlphaToMask", 0) !== 0;
   material.needsUpdate = true;
 }
-function applyLilToonPassState(material, mode, properties, pass) {
+var appliedPassStates = /* @__PURE__ */ new WeakMap();
+function applyLilToonPassState(material, mode, properties, pass, revision) {
+  const previous = appliedPassStates.get(material);
+  if (previous?.revision === revision && previous.mode === mode && previous.properties === properties && previous.pass === pass)
+    return;
   const mappedProperties = { ...properties };
   const prefix = pass === "outline" ? "_Outline" : pass === "transparent-pre" ? "_Pre" : pass.startsWith("fur") ? "_Fur" : "";
   if (prefix)
@@ -6808,6 +6911,7 @@ function applyLilToonPassState(material, mode, properties, pass) {
     });
   applyLilToonRenderState(material, mode, mappedProperties);
   material.forceSinglePass = true;
+  appliedPassStates.set(material, { mode, properties, pass, revision });
 }
 
 // src/material/LilToonMaterial.ts
@@ -6836,6 +6940,14 @@ function textureDefault(property) {
   return "white";
 }
 var OUTPUT_SRGB_UNIFORM = "uLilToonOutputSrgb";
+function getEffectiveOutputColorSpace(renderer) {
+  const renderTarget = renderer.getRenderTarget();
+  if (renderTarget === null) return renderer.outputColorSpace;
+  if ("isXRRenderTarget" in renderTarget && renderTarget.isXRRenderTarget === true) {
+    return renderTarget.texture.colorSpace;
+  }
+  return ColorManagement.workingColorSpace;
+}
 function addOutputColorSpaceConversion(fragmentShader) {
   const globalsIndex = fragmentShader.indexOf("struct type_Globals");
   const mainEnd = fragmentShader.lastIndexOf("\n}");
@@ -6863,9 +6975,10 @@ var LilToonMaterial = class extends RawShaderMaterial {
   color = new Color(1, 1, 1);
   isLilToonMaterial = true;
   lilToonProperties;
-  lilToonTextures = {};
+  lilToonTextures;
   globalUniforms;
   renderMode;
+  shaderVariant;
   pass;
   transparencyMode;
   featureSet;
@@ -6876,7 +6989,78 @@ var LilToonMaterial = class extends RawShaderMaterial {
   #textureViews = new TextureViews();
   #morphWeights = new MorphWeights();
   #usedProperties;
+  #propertyRevision = 0;
+  #textureRevision = 0;
+  #textureColorSpaces;
+  #trackedPropertyValues = /* @__PURE__ */ new WeakMap();
   #startedAt = performance.now();
+  get propertyRevision() {
+    return this.#propertyRevision;
+  }
+  get textureRevision() {
+    return this.#textureRevision;
+  }
+  #trackPropertyValue(value) {
+    if (typeof value !== "object" || value === null) return value;
+    const existing = this.#trackedPropertyValues.get(value);
+    if (existing) return existing;
+    const tracked = new Proxy(value, {
+      set: (target, key, next) => {
+        const previous = Reflect.get(target, key, target);
+        const changed = Reflect.set(target, key, next, target);
+        if (changed && !Object.is(previous, next)) this.#propertyRevision++;
+        return changed;
+      },
+      deleteProperty: (target, key) => {
+        const existed = Reflect.has(target, key);
+        const changed = Reflect.deleteProperty(target, key);
+        if (changed && existed) this.#propertyRevision++;
+        return changed;
+      }
+    });
+    this.#trackedPropertyValues.set(value, tracked);
+    this.#trackedPropertyValues.set(tracked, tracked);
+    return tracked;
+  }
+  // Keep direct public bag edits and nested vector/array writes observable without scanning the bag each draw.
+  #createPropertyBag(initial) {
+    const properties = {};
+    for (const [name, value] of Object.entries(initial))
+      properties[name] = this.#trackPropertyValue(value);
+    return new Proxy(properties, {
+      set: (target, key, value) => {
+        const tracked = this.#trackPropertyValue(
+          value
+        );
+        const previous = Reflect.get(target, key, target);
+        const changed = Reflect.set(target, key, tracked, target);
+        if (changed && !Object.is(previous, tracked)) this.#propertyRevision++;
+        return changed;
+      },
+      deleteProperty: (target, key) => {
+        const existed = Reflect.has(target, key);
+        const changed = Reflect.deleteProperty(target, key);
+        if (changed && existed) this.#propertyRevision++;
+        return changed;
+      }
+    });
+  }
+  #createTextureBag() {
+    return new Proxy({}, {
+      set: (target, key, texture) => {
+        const previous = Reflect.get(target, key, target);
+        const changed = Reflect.set(target, key, texture, target);
+        if (changed && !Object.is(previous, texture)) this.#textureRevision++;
+        return changed;
+      },
+      deleteProperty: (target, key) => {
+        const existed = Reflect.has(target, key);
+        const changed = Reflect.deleteProperty(target, key);
+        if (changed && existed) this.#textureRevision++;
+        return changed;
+      }
+    });
+  }
   constructor(parameters = {}) {
     const renderMode = parameters.renderMode ?? "opaque";
     const pass = parameters.pass ?? "forward";
@@ -6926,12 +7110,14 @@ ${program.fragmentShader}`.matchAll(
       fog: false
     });
     this.renderMode = renderMode;
+    this.shaderVariant = parameters.shaderVariant;
     this.pass = pass;
     this.transparencyMode = parameters.transparencyMode ?? "normal";
     this.forceSinglePass = true;
     this.globalUniforms = globalUniforms;
     this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
     this.#samplerBindings = program.samplerBindings;
+    this.#textureColorSpaces = parameters.textureColorSpaces ?? {};
     this.#cubeSamplers = cubeSamplers;
     this.#shaderKey = program.key;
     this.#program = program;
@@ -6939,7 +7125,10 @@ ${program.fragmentShader}`.matchAll(
       program.vertexShader,
       program.fragmentShader
     );
-    this.lilToonProperties = propertyDefaults(renderMode);
+    this.lilToonProperties = this.#createPropertyBag(
+      propertyDefaults(renderMode)
+    );
+    this.lilToonTextures = this.#createTextureBag();
     Object.defineProperty(this, "opacity", {
       configurable: true,
       enumerable: true,
@@ -6989,12 +7178,16 @@ ${program.fragmentShader}`.matchAll(
     if (parameters.map !== void 0) this.map = parameters.map;
     if (parameters.alphaTest !== void 0)
       this.alphaTest = parameters.alphaTest;
-    this.featureSet = detectLilToonFeatures(this.lilToonProperties);
+    this.featureSet = detectLilToonFeatures(
+      this.lilToonProperties,
+      this.shaderVariant
+    );
     applyLilToonPassState(
       this,
       this.renderMode,
       this.lilToonProperties,
-      this.pass
+      this.pass,
+      this.propertyRevision
     );
     this.defaultAttributeValues = {
       ...this.defaultAttributeValues,
@@ -7028,7 +7221,7 @@ ${program.fragmentShader}`.matchAll(
           this.defines.USE_MORPHTARGETS && this.defines.MORPHTARGETS_COUNT
         )
       );
-      const outputColorSpace = renderer.getRenderTarget()?.texture.colorSpace ?? renderer.outputColorSpace;
+      const outputColorSpace = getEffectiveOutputColorSpace(renderer);
       this.uniforms[OUTPUT_SRGB_UNIFORM].value = Number(
         outputColorSpace === SRGBColorSpace
       );
@@ -7068,7 +7261,10 @@ ${program.fragmentShader}`.matchAll(
     this.lilToonProperties[name] = copyValue(value);
     setGlobalProperty(this.globalUniforms, name, value);
     if (name === "_Color") this.readColor();
-    this.featureSet = detectLilToonFeatures(this.lilToonProperties);
+    this.featureSet = detectLilToonFeatures(
+      this.lilToonProperties,
+      this.shaderVariant
+    );
     if (/(_Cull|_ZWrite|_ZTest|_Blend|_Stencil|_Offset|_ColorMask|_AlphaToMask)/.test(
       name
     )) {
@@ -7076,7 +7272,8 @@ ${program.fragmentShader}`.matchAll(
         this,
         this.renderMode,
         this.lilToonProperties,
-        this.pass
+        this.pass,
+        this.propertyRevision
       );
     }
     this.refreshProgram();
@@ -7104,6 +7301,7 @@ ${program.fragmentShader}`.matchAll(
       specVersion: LILTOON_GLTF_SPEC_VERSION,
       lilToonVersion: LILTOON_UPSTREAM_DESCRIPTION,
       renderMode: this.renderMode,
+      ...this.shaderVariant === void 0 ? {} : { shaderVariant: this.shaderVariant },
       properties,
       transparencyMode: this.transparencyMode,
       textures
@@ -7119,7 +7317,11 @@ ${program.fragmentShader}`.matchAll(
     this.#textureViews.retain(this.#program.resources);
     for (const resource of this.#program.resources) {
       if (resource.property.startsWith("__")) continue;
-      const texture = this.#textureViews.get(resource, this.lilToonTextures);
+      const texture = this.#textureViews.get(
+        resource,
+        this.lilToonTextures,
+        this.#textureColorSpaces
+      );
       const isCube = Boolean(
         texture?.isCubeTexture
       );
@@ -7142,6 +7344,7 @@ ${program.fragmentShader}`.matchAll(
     this.#morphWeights.dispose();
     this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
     this.renderMode = source.renderMode;
+    this.shaderVariant = source.shaderVariant;
     this.pass = source.pass;
     this.transparencyMode = source.transparencyMode;
     this.#shaderKey = source.#shaderKey;
@@ -7193,7 +7396,8 @@ ${program.fragmentShader}`.matchAll(
     const current = this.lilToonProperties._Color;
     const alpha = Array.isArray(current) ? current[3] ?? 1 : current instanceof Vector4 ? current.w : 1;
     const value = [this.color.r, this.color.g, this.color.b, alpha];
-    this.lilToonProperties._Color = value;
+    const unchanged = Array.isArray(current) && current[0] === value[0] && current[1] === value[1] && current[2] === value[2] && (current[3] ?? 1) === alpha || current instanceof Color && current.r === value[0] && current.g === value[1] && current.b === value[2] || current instanceof Vector4 && current.x === value[0] && current.y === value[1] && current.z === value[2] && current.w === alpha;
+    if (!unchanged) this.lilToonProperties._Color = value;
     setGlobalProperty(this.globalUniforms, "_Color", value);
   }
   refreshProgram() {
@@ -7517,17 +7721,30 @@ var GLTFLilToonExtension = class {
     if (!definition) return null;
     return (async () => {
       const textures = {};
+      const textureColorSpaces = {};
       for (const [property, info] of Object.entries(
         definition.cubeTextures ?? {}
       )) {
         if (property !== "_ReflectionCubeTex" || definition.textures?.[property] !== void 0)
           throw new Error(`Invalid lilToon cubemap property: ${property}`);
         textures[property] = await this.#cubes.load(info);
+        const colorSpace = this.options.getTextureColorSpace?.(
+          materialIndex,
+          property
+        );
+        if (colorSpace !== void 0) textureColorSpaces[property] = colorSpace;
       }
       await Promise.all(
         Object.entries(definition.textures ?? {}).map(
           async ([property, textureInfo]) => {
             const index = typeof textureInfo === "number" ? textureInfo : textureInfo.index;
+            const colorSpace = this.options.getTextureColorSpace?.(
+              materialIndex,
+              property,
+              index
+            );
+            if (colorSpace !== void 0)
+              textureColorSpaces[property] = colorSpace;
             textures[property] = await this.parser.getDependency(
               "texture",
               index
@@ -7538,9 +7755,11 @@ var GLTFLilToonExtension = class {
       const material = new LilToonMaterial({
         name: materialDefinition.name,
         renderMode: renderModeFromDefinition(definition),
+        shaderVariant: definition.shaderVariant,
         transparencyMode: definition.transparencyMode ?? (/TwoPassTransparent/i.test(definition.shaderVariant ?? "") ? "two-pass" : /OnePassTransparent/i.test(definition.shaderVariant ?? "") ? "one-pass" : "normal"),
         properties: definition.cubeTextures?._ReflectionCubeTex ? { ...definition.properties, _ReflectionCubeTex_HDR: [1, 1, 0, 0] } : definition.properties,
         textures,
+        textureColorSpaces,
         deformation: true
       });
       this.parser.associations.set(material, { materials: materialIndex });
@@ -7593,4 +7812,4 @@ var GLTFLilToonExtension = class {
   }
 };
 
-export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, applyLilToonPassState, detectLilToonFeatures, setGlobalProperty, warnLilToon };
+export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, applyLilToonPassState, detectLilToonFeatures, isLilToonOutlineEnabled, setGlobalProperty, warnLilToon };

@@ -6,6 +6,7 @@ import {
 import {
 	BackSide,
 	Color,
+	ColorManagement,
 	GLSL3,
 	Matrix4,
 	RawShaderMaterial,
@@ -101,6 +102,22 @@ function textureDefault(property: string): string {
 }
 
 const OUTPUT_SRGB_UNIFORM = "uLilToonOutputSrgb";
+
+function getEffectiveOutputColorSpace(renderer: WebGLRenderer): string {
+	const renderTarget = renderer.getRenderTarget();
+	if (renderTarget === null) return renderer.outputColorSpace;
+
+	if (
+		"isXRRenderTarget" in renderTarget &&
+		renderTarget.isXRRenderTarget === true
+	) {
+		return renderTarget.texture.colorSpace;
+	}
+
+	// Match WebGLRenderer: ordinary render targets stay in working space because
+	// the target texture performs its own color-space encoding on write.
+	return ColorManagement.workingColorSpace;
+}
 
 function addOutputColorSpaceConversion(fragmentShader: string): string {
 	const globalsIndex = fragmentShader.indexOf("struct type_Globals");
@@ -414,9 +431,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 					this.defines.USE_MORPHTARGETS && this.defines.MORPHTARGETS_COUNT,
 				),
 			);
-			const outputColorSpace =
-				renderer.getRenderTarget()?.texture.colorSpace ??
-				renderer.outputColorSpace;
+			const outputColorSpace = getEffectiveOutputColorSpace(renderer);
 			this.uniforms[OUTPUT_SRGB_UNIFORM]!.value = Number(
 				outputColorSpace === SRGBColorSpace,
 			);

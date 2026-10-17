@@ -26,7 +26,7 @@
         },
         "shaderVariant": {
           "type": "string",
-          "description": "Original Unity shader name; does not imply renderer support for that shader."
+          "description": "Original Unity shader name; retained for render-mode inference and Outline/Multi semantics, not full shader support."
         },
         "renderMode": {
           "$ref": "#/definitions/LilToonRenderMode",

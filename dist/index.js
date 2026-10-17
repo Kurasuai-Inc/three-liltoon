@@ -1,6 +1,6 @@
-export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-UMXNL3SB.js';
-import { LilToonMaterial, setGlobalProperty, applyLilToonPassState } from './chunk-DHSQY7C7.js';
-export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-DHSQY7C7.js';
+export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-VJVJN4NL.js';
+import { LilToonMaterial, setGlobalProperty, applyLilToonPassState, isLilToonOutlineEnabled } from './chunk-Y3LONFS7.js';
+export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-Y3LONFS7.js';
 import { MeshBasicMaterial, MeshDepthMaterial, RGBADepthPacking, MeshDistanceMaterial, SkinnedMesh, Mesh, OneFactor, ZeroFactor, CustomBlending, BufferGeometry, Scene, Vector4, SRGBColorSpace, HalfFloatType, FloatType, Vector2, NoColorSpace, UnsignedByteType, FramebufferTexture, DataTexture, RGBAFormat, Float32BufferAttribute, Uint32BufferAttribute, Vector3, Matrix4, WebGLRenderTarget, NearestFilter, RawShaderMaterial, GLSL3, PlaneGeometry } from 'three';
 
 // src/renderer/passOwnership.ts
@@ -29,7 +29,8 @@ function syncPassMaterial(source, target) {
     target,
     source.renderMode,
     source.lilToonProperties,
-    target.pass
+    target.pass,
+    target.propertyRevision
   );
 }
 var AuxiliaryPassDraw = class {
@@ -906,7 +907,8 @@ var FurPasses = class {
               material,
               source.renderMode,
               source.lilToonProperties,
-              material.pass
+              material.pass,
+              material.propertyRevision
             );
         }
         const group = args[5] ?? mesh.geometry.drawRange;
@@ -1023,7 +1025,10 @@ var TransparencyPasses = class {
         const manual = mesh.children.some(
           (c) => c.isMesh && c.material?.pass === "outline"
         );
-        if (isSurface(source) && !manual && Number(source.lilToonProperties._UseOutline ?? 1) !== 0 && Number(source.lilToonProperties._OutlineWidth ?? 0) > 0)
+        if (isSurface(source) && !manual && isLilToonOutlineEnabled(
+          source.lilToonProperties,
+          source.shaderVariant
+        ) && Number(source.lilToonProperties._OutlineWidth ?? 0) > 0)
           this.draws.draw(
             renderer,
             render,
@@ -1055,6 +1060,44 @@ var TransparencyPasses = class {
 // src/renderer/enableLilToon.ts
 var helpers = /* @__PURE__ */ new WeakSet();
 var originalHooks = /* @__PURE__ */ new WeakMap();
+function enableShadowAlphaMask(material, bindings) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.lilToonAlphaMaskTexture = bindings.map;
+    shader.uniforms.lilToonAlphaMaskMode = bindings.mode;
+    shader.uniforms.lilToonAlphaMaskScale = bindings.scale;
+    shader.uniforms.lilToonAlphaMaskValue = bindings.value;
+    if (!shader.fragmentShader.includes("#include <common>"))
+      throw new Error("Three shadow shader is missing common.");
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <common>",
+      `#include <common>
+#if defined(USE_MAP)
+uniform sampler2D lilToonAlphaMaskTexture;
+#endif
+uniform int lilToonAlphaMaskMode;
+uniform float lilToonAlphaMaskScale;
+uniform float lilToonAlphaMaskValue;`
+    );
+    if (!shader.fragmentShader.includes("#include <alphatest_fragment>"))
+      throw new Error("Three shadow shader is missing alphatest_fragment.");
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <alphatest_fragment>",
+      `if (lilToonAlphaMaskMode >= 1 && lilToonAlphaMaskMode <= 4) {
+float lilToonAlpha = 1.0;
+#if defined(USE_MAP)
+lilToonAlpha = texture(lilToonAlphaMaskTexture, vMapUv).r;
+#endif
+lilToonAlpha = clamp(lilToonAlpha * lilToonAlphaMaskScale + lilToonAlphaMaskValue, 0.0, 1.0);
+if (lilToonAlphaMaskMode == 1) diffuseColor.a = lilToonAlpha;
+if (lilToonAlphaMaskMode == 2) diffuseColor.a *= lilToonAlpha;
+if (lilToonAlphaMaskMode == 3) diffuseColor.a = clamp(diffuseColor.a + lilToonAlpha, 0.0, 1.0);
+if (lilToonAlphaMaskMode == 4) diffuseColor.a = clamp(diffuseColor.a - lilToonAlpha, 0.0, 1.0);
+}
+#include <alphatest_fragment>`
+    );
+  };
+  material.customProgramCacheKey = () => "liltoon-shadow-alpha-mask-v1";
+}
 var AutomaticPasses = class {
   recipes = /* @__PURE__ */ new Map();
   proxies = /* @__PURE__ */ new WeakMap();
@@ -1082,14 +1125,26 @@ var AutomaticPasses = class {
       });
       const depth = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
       const distance = new MeshDistanceMaterial();
+      const shadowAlphaMask = {
+        map: { value: null },
+        mode: { value: 0 },
+        scale: { value: 1 },
+        value: { value: 0 }
+      };
+      enableShadowAlphaMask(depth, shadowAlphaMask);
+      enableShadowAlphaMask(distance, shadowAlphaMask);
       recipe = {
         owners: /* @__PURE__ */ new Map(),
         source,
         outline,
         depth,
         distance,
+        shadowAlphaMask,
         input: null,
         map: null,
+        propertyRevision: -1,
+        textureRevision: -1,
+        renderMode: source.renderMode,
         release: () => {
           source.removeEventListener("dispose", recipe.release);
           outline.dispose();
@@ -1104,30 +1159,41 @@ var AutomaticPasses = class {
     }
     recipe.owners.set(mesh, scene);
     source.getProperty("_Color");
-    for (const [name, value] of Object.entries(source.lilToonProperties)) {
-      recipe.outline.lilToonProperties[name] = value;
-      setGlobalProperty(recipe.outline.globalUniforms, name, value);
+    const propertiesChanged = recipe.propertyRevision !== source.propertyRevision || recipe.renderMode !== source.renderMode;
+    const texturesChanged = recipe.textureRevision !== source.textureRevision;
+    if (propertiesChanged) {
+      for (const [name, value] of Object.entries(source.lilToonProperties)) {
+        recipe.outline.lilToonProperties[name] = value;
+        setGlobalProperty(recipe.outline.globalUniforms, name, value);
+      }
+      recipe.outline.setProperty("_Color", source.getProperty("_Color"));
+      recipe.outline.renderMode = source.renderMode;
+      applyLilToonPassState(
+        recipe.outline,
+        source.renderMode,
+        source.lilToonProperties,
+        "outline",
+        recipe.outline.propertyRevision
+      );
+      recipe.propertyRevision = source.propertyRevision;
+      recipe.renderMode = source.renderMode;
     }
-    recipe.outline.setProperty("_Color", source.getProperty("_Color"));
-    for (const [name, texture] of Object.entries(source.lilToonTextures)) {
-      if (recipe.outline.lilToonTextures[name] !== texture)
-        recipe.outline.setTexture(name, texture);
+    if (texturesChanged) {
+      for (const [name, texture] of Object.entries(source.lilToonTextures)) {
+        if (recipe.outline.lilToonTextures[name] !== texture)
+          recipe.outline.setTexture(name, texture);
+      }
+      recipe.textureRevision = source.textureRevision;
     }
-    recipe.outline.renderMode = source.renderMode;
-    applyLilToonPassState(
-      recipe.outline,
-      source.renderMode,
-      source.lilToonProperties,
-      "outline"
-    );
     recipe.outline.visible = source.visible;
-    if (recipe.input !== source.map) {
+    const inputChanged = recipe.input !== source.map;
+    if (inputChanged) {
       recipe.map?.dispose();
       recipe.input = source.map;
       recipe.map = source.map?.clone() ?? null;
       if (recipe.map) recipe.map.matrixAutoUpdate = false;
     }
-    if (recipe.map) {
+    if (recipe.map && (propertiesChanged || inputChanged)) {
       const st = source.getProperty("_MainTex_ST");
       const v = Array.isArray(st) ? st : st && typeof st === "object" && "toArray" in st ? st.toArray() : [1, 1, 0, 0];
       recipe.map.matrix.setUvTransform(
@@ -1158,7 +1224,10 @@ var AutomaticPasses = class {
         const first = recipes.find((recipe) => recipe !== void 0);
         if (!first) continue;
         const outlines = recipes.map(
-          (recipe) => recipe && recipe.source.renderMode !== "transparent" && Number(recipe.source.lilToonProperties._UseOutline ?? 1) !== 0 && Number(recipe.source.lilToonProperties._OutlineWidth ?? 0) > 0 ? recipe.outline : this.hidden
+          (recipe) => recipe && recipe.source.renderMode !== "transparent" && isLilToonOutlineEnabled(
+            recipe.source.lilToonProperties,
+            recipe.source.shaderVariant
+          ) && Number(recipe.source.lilToonProperties._OutlineWidth ?? 0) > 0 ? recipe.outline : this.hidden
         );
         const manualOutline = mesh.children.some(
           (child) => !helpers.has(child) && child.isMesh && child.material?.pass === "outline"
@@ -1211,6 +1280,26 @@ var AutomaticPasses = class {
             material.alphaMap = null;
             material.alphaTest = recipe.source.alphaTest;
             material.opacity = recipe.source.opacity;
+            const alphaMaskMode = Number(
+              recipe.source.getProperty("_AlphaMaskMode") ?? 0
+            );
+            const alphaMask = recipe.source.lilToonTextures._AlphaMask ?? null;
+            if (alphaMaskMode !== 0 && !alphaMask)
+              throw new Error(
+                "An enabled lilToon shadow alpha mask requires _AlphaMask texture data."
+              );
+            if (alphaMaskMode !== 0 && !recipe.map)
+              throw new Error(
+                "lilToon shadow alpha masks require the source main texture UV transform."
+              );
+            recipe.shadowAlphaMask.map.value = alphaMaskMode === 0 ? recipe.map : alphaMask;
+            recipe.shadowAlphaMask.mode.value = alphaMaskMode;
+            recipe.shadowAlphaMask.scale.value = Number(
+              recipe.source.getProperty("_AlphaMaskScale") ?? 1
+            );
+            recipe.shadowAlphaMask.value.value = Number(
+              recipe.source.getProperty("_AlphaMaskValue") ?? 0
+            );
           } else if (!recipe && (material === first.depth || material === first.distance)) {
             material.opacity = materials[args[6]?.materialIndex ?? 0]?.opacity ?? 1;
           }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	BufferGeometry,
+	ColorManagement,
 	DataTexture,
 	Group,
+	LinearSRGBColorSpace,
 	Mesh,
 	PerspectiveCamera,
 	SRGBColorSpace,
@@ -366,5 +368,62 @@ describe("LilToonMaterial", () => {
 		);
 
 		expect(material.uniformsNeedUpdate).toBe(true);
+	});
+
+	it("matches Three.js output color-space selection for canvas, render targets, and XR", () => {
+		const material = new LilToonMaterial();
+		let renderTarget: {
+			isXRRenderTarget?: boolean;
+			texture: { colorSpace: string };
+		} | null = null;
+		const renderer = {
+			info: { render: { frame: 0 } },
+			shadowMap: { enabled: false },
+			outputColorSpace: SRGBColorSpace,
+			getContext: () => ({ getParameter: () => 32 }),
+			getRenderTarget: () => renderTarget,
+			getDrawingBufferSize(target: Vector2) {
+				return target.set(1280, 720);
+			},
+		} as unknown as WebGLRenderer;
+		const scene = new Scene();
+		const camera = new PerspectiveCamera();
+		const mesh = new Mesh(new BufferGeometry(), material);
+		const draw = () =>
+			material.onBeforeRender(
+				renderer,
+				scene,
+				camera,
+				mesh.geometry,
+				mesh,
+				new Group(),
+			);
+		const outputSrgb = () => material.uniforms.uLilToonOutputSrgb?.value;
+
+		// Three uses the display output space only when drawing to the canvas.
+		draw();
+		expect(outputSrgb()).toBe(1);
+		renderer.outputColorSpace = LinearSRGBColorSpace;
+		draw();
+		expect(outputSrgb()).toBe(0);
+
+		// Non-XR render targets render in working space, independent of texture space.
+		renderer.outputColorSpace = SRGBColorSpace;
+		renderTarget = { texture: { colorSpace: SRGBColorSpace } };
+		draw();
+		expect(outputSrgb()).toBe(
+			Number(ColorManagement.workingColorSpace === SRGBColorSpace),
+		);
+
+		// XR targets are the exception: their texture defines the effective output.
+		renderTarget = {
+			isXRRenderTarget: true,
+			texture: { colorSpace: SRGBColorSpace },
+		};
+		draw();
+		expect(outputSrgb()).toBe(1);
+		renderTarget.texture.colorSpace = LinearSRGBColorSpace;
+		draw();
+		expect(outputSrgb()).toBe(0);
 	});
 });

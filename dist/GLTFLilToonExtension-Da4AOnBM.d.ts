@@ -16,6 +16,8 @@ interface LilToonWarning {
 interface GLTFLilToonExtensionOptions {
     /** Non-fatal compatibility warnings. Omit to log them to the console. */
     onWarning?: (warning: LilToonWarning) => void;
+    /** Optional strict format bridge for per-use sampling metadata. */
+    getTextureColorSpace?: (materialIndex: number, property: string, textureIndex?: number) => "srgb" | "linear" | undefined;
 }
 declare class GLTFLilToonExtension implements GLTFLoaderPlugin {
     #private;

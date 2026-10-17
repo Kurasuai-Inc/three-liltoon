@@ -1,9 +1,10 @@
-import { L as LilToonWarning } from './GLTFLilToonExtension-2SkJrHyN.js';
+import { L as LilToonWarning } from './GLTFLilToonExtension-Da4AOnBM.js';
 import { Color, Vector2, Vector3, Vector4, ColorRepresentation, Texture, Matrix4, RawShaderMaterial, Object3D, WebGLRenderer, Loader, LoadingManager } from 'three';
 
 type LilToonRenderMode = "opaque" | "cutout" | "transparent" | "refraction" | "refraction-blur" | "fur" | "fur-cutout" | "fur-two-pass" | "gem";
 type LilToonTransparencyMode = "normal" | "one-pass" | "two-pass";
 type LilToonPass = "forward" | "outline" | "fur" | "fur-pre" | "transparent-pre" | "refraction-blur-pre";
+type LilToonTextureColorSpace = "srgb" | "linear";
 type LilToonScalarOrVector = number | boolean | number[] | Color | Vector2 | Vector3 | Vector4;
 interface LilToonMaterialParameters {
     color?: ColorRepresentation;
@@ -12,10 +13,14 @@ interface LilToonMaterialParameters {
     alphaTest?: number;
     name?: string;
     renderMode?: LilToonRenderMode;
+    /** Original Unity shader name; lilToon uses Outline shader variants to enable its outline pass. */
+    shaderVariant?: string;
     /** Unity transparent pass configuration; additional-light passes remain deferred. */
     transparencyMode?: LilToonTransparencyMode;
     properties?: Record<string, LilToonScalarOrVector>;
     textures?: Record<string, Texture | null>;
+    /** Effective transfer for each texture binding when supplied by a strict character format. */
+    textureColorSpaces?: Readonly<Record<string, LilToonTextureColorSpace>>;
     /** Enables the generated skin/morph vertex ABI. Safe for static meshes too. */
     deformation?: boolean;
     /** @internal Used by automatic outline rendering. */
@@ -43,12 +48,13 @@ interface LilToonFeatureSet {
     outline: boolean;
     dissolve: boolean;
 }
-declare function detectLilToonFeatures(properties: Record<string, LilToonScalarOrVector>): LilToonFeatureSet;
+declare function detectLilToonFeatures(properties: Record<string, LilToonScalarOrVector>, shaderVariant?: string): LilToonFeatureSet;
 
 interface SerializedLilToonMaterial {
     specVersion?: string;
     lilToonVersion?: string | number;
     renderMode: LilToonRenderMode;
+    shaderVariant?: string;
     transparencyMode?: LilToonTransparencyMode;
     properties: Record<string, LilToonScalarOrVector>;
     textures: Record<string, string | number | null>;
@@ -62,9 +68,12 @@ declare class LilToonMaterial extends RawShaderMaterial {
     readonly lilToonTextures: Record<string, Texture | null>;
     globalUniforms: LilToonGlobalUniforms;
     renderMode: LilToonRenderMode;
+    shaderVariant?: string;
     pass: LilToonPass;
     transparencyMode: LilToonTransparencyMode;
     featureSet: LilToonFeatureSet;
+    get propertyRevision(): number;
+    get textureRevision(): number;
     constructor(parameters?: LilToonMaterialParameters);
     /** The actual compiled program, reselected when texture requirements change. */
     get shaderKey(): string;
@@ -132,7 +141,7 @@ interface GLTFLilToonMaterialDefinition {
     specVersion?: "1.0" | "1.1" | "1.2" | typeof LILTOON_GLTF_SPEC_VERSION;
     /** Source lilToon version, retained as metadata. */
     lilToonVersion?: string | number;
-    /** Original Unity shader name; does not imply renderer support for that shader. */
+    /** Original Unity shader name; retained for render-mode inference and Outline/Multi semantics, not full shader support. */
     shaderVariant?: string;
     /** When omitted, inferred from the original supported shader family. */
     renderMode?: LilToonRenderMode;

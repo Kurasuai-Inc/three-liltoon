@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
 	BoxGeometry,
+	Float32BufferAttribute,
 	Group,
 	Mesh,
 	PerspectiveCamera,
@@ -41,6 +42,7 @@ import {
 
 function makeRenderer(draw: (scene: Scene, camera: PerspectiveCamera) => void) {
 	return {
+		capabilities: { maxTextureSize: 4096 },
 		info: { render: { frame: 0 }, autoReset: true },
 		shadowMap: { enabled: false, autoUpdate: true, needsUpdate: false },
 		autoClear: true,
@@ -53,7 +55,7 @@ function makeRenderer(draw: (scene: Scene, camera: PerspectiveCamera) => void) {
 		setViewport: vi.fn(),
 		setScissor: vi.fn(),
 		setScissorTest: vi.fn(),
-		render(scene: Scene, camera: PerspectiveCamera) {
+		render(this: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
 			scene.updateMatrixWorld();
 			scene.onBeforeRender(
 				this as unknown as WebGLRenderer,
@@ -68,6 +70,17 @@ function makeRenderer(draw: (scene: Scene, camera: PerspectiveCamera) => void) {
 		},
 		dispose: vi.fn(),
 	} as unknown as WebGLRenderer;
+}
+
+function programSignature(material: LilToonMaterial): string {
+	// Three's full cache key also includes renderer capabilities; these are the
+	// material-controlled inputs that must match between compile and first draw.
+	return JSON.stringify({
+		pass: material.pass,
+		shaderKey: material.shaderKey,
+		customProgramCacheKey: material.customProgramCacheKey(),
+		defines: material.defines,
+	});
 }
 
 describe("compileLilToonAsync", () => {
@@ -134,6 +147,79 @@ describe("compileLilToonAsync", () => {
 		release();
 		material.dispose();
 		mesh.geometry.dispose();
+	});
+
+	it("precompiles each geometry's morph defines without an extra first-draw program", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			material = new LilToonMaterial(),
+			geometryWithOneMorph = new BoxGeometry(),
+			geometryWithTwoMorphs = new BoxGeometry();
+		for (const [geometry, count] of [
+			[geometryWithOneMorph, 1],
+			[geometryWithTwoMorphs, 2],
+		] as const) {
+		const position = geometry.getAttribute("position");
+		geometry.morphAttributes.position = Array.from(
+			{ length: count },
+			() => new Float32BufferAttribute(position.array.slice(), 3),
+		);
+		}
+		const firstMesh = new Mesh(geometryWithOneMorph, material),
+			secondMesh = new Mesh(geometryWithTwoMorphs, material);
+		scene.add(firstMesh, secondMesh);
+		const compiledKeys: string[] = [],
+			drawnKeys: string[] = [];
+		let renderer: WebGLRenderer;
+		renderer = makeRenderer((current, activeCamera) => {
+			current.traverse((object) => {
+				const mesh = object as Mesh;
+				if (!mesh.isMesh) return;
+				const materials = Array.isArray(mesh.material)
+					? mesh.material
+					: [mesh.material];
+				for (const currentMaterial of materials) {
+					if (!(currentMaterial instanceof LilToonMaterial)) continue;
+					currentMaterial.onBeforeRender(
+						renderer,
+						current,
+						activeCamera,
+						mesh.geometry,
+						mesh,
+						new Group(),
+					);
+					drawnKeys.push(programSignature(currentMaterial));
+				}
+			});
+		});
+		const compileAsync = vi.fn(async (target: Scene) => {
+		target.traverse((object) => {
+			const mesh = object as Mesh;
+			if (!mesh.isMesh) return;
+			const materials = Array.isArray(mesh.material)
+				? mesh.material
+				: [mesh.material];
+			for (const currentMaterial of materials)
+				if (currentMaterial instanceof LilToonMaterial)
+					compiledKeys.push(programSignature(currentMaterial));
+		});
+		return target;
+		});
+		(
+			renderer as unknown as { compileAsync: typeof compileAsync }
+		).compileAsync = compileAsync;
+		const release = enableLilToon(renderer);
+
+		await compileLilToonAsync(renderer, scene, camera);
+		renderer.render(scene, camera);
+
+		expect(new Set(compiledKeys)).toEqual(new Set(drawnKeys));
+		expect(new Set(compiledKeys).size).toBe(2);
+		expect(new Set(drawnKeys).size).toBe(2);
+		release();
+		material.dispose();
+		geometryWithOneMorph.dispose();
+		geometryWithTwoMorphs.dispose();
 	});
 
 	it("requires the renderer pass installation", () => {

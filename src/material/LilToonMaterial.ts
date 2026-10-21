@@ -805,7 +805,14 @@ export class LilToonMaterial extends RawShaderMaterial {
 	}
 }
 
-/** @internal Prepare the current variant through the same selector used by onBeforeRender. */
-export function prepareLilToonMaterialProgram(material: LilToonMaterial): void {
+/** @internal Prepare the current selector and geometry defines used by onBeforeRender. */
+export function prepareLilToonMaterialProgram(
+	material: LilToonMaterial,
+	geometry: BufferGeometry,
+): void {
 	(material as unknown as { refreshProgram(): void }).refreshProgram();
+	// Three's compile() does not call material.onBeforeRender(). Morph target
+	// defines normally arrive there, so precompilation must set them for each
+	// mesh before Three derives that mesh's WebGL program cache key.
+	updateThreeMorphDefines(material, geometry);
 }

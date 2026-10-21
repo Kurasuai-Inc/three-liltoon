@@ -379,17 +379,36 @@ type Installation = {
 };
 const installations = new WeakMap<WebGLRenderer, Installation>();
 
-function prepareLilToonPrograms(scene: Object3D): void {
-	scene.traverse((object) => {
-		const mesh = object as Mesh;
-		if (!mesh.isMesh) return;
-		const materials = Array.isArray(mesh.material)
-			? mesh.material
-			: [mesh.material];
-		for (const material of materials)
-			if (material instanceof LilToonMaterial)
-				prepareLilToonMaterialProgram(material);
-	});
+function compileLilToonPrograms(
+	renderer: WebGLRenderer,
+	scene: Object3D,
+	camera: Camera,
+): Promise<void> {
+	const traverse = scene.traverse;
+	// WebGLRenderer.compile() derives a program for each renderable while
+	// traversing, but does not invoke material.onBeforeRender(). Intercept that
+	// traversal briefly so each geometry contributes the same morph defines as
+	// its first draw, including when one material is shared by several meshes.
+	scene.traverse = function (callback) {
+		return traverse.call(this, (object) => {
+			const mesh = object as Mesh;
+			if (mesh.isMesh) {
+				const materials = Array.isArray(mesh.material)
+					? mesh.material
+					: [mesh.material];
+				for (const material of materials)
+					if (material instanceof LilToonMaterial)
+						prepareLilToonMaterialProgram(material, mesh.geometry);
+			}
+			callback(object);
+		});
+	};
+	try {
+		// compileAsync() calls compile() synchronously before returning its promise.
+		return renderer.compileAsync(scene, camera).then(() => {});
+	} finally {
+		scene.traverse = traverse;
+	}
 }
 
 /** Compile the lilToon variants currently selected for a scene before its first draw. */
@@ -465,8 +484,7 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 			let restore: (() => void) | undefined;
 			try {
 				restore = prepare(scene);
-				prepareLilToonPrograms(scene);
-				await renderer.compileAsync(scene, camera);
+				await compileLilToonPrograms(renderer, scene, camera);
 			} finally {
 				restore?.();
 				passes.end();

@@ -804,3 +804,8 @@ export class LilToonMaterial extends RawShaderMaterial {
 		}
 	}
 }
+
+/** @internal Prepare the current variant through the same selector used by onBeforeRender. */
+export function prepareLilToonMaterialProgram(material: LilToonMaterial): void {
+	(material as unknown as { refreshProgram(): void }).refreshProgram();
+}

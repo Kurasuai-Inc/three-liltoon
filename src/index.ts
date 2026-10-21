@@ -1,5 +1,6 @@
 export { LilToonMaterial } from "./material/LilToonMaterial.js";
 export { enableLilToon } from "./renderer/enableLilToon.js";
+export { compileLilToonAsync } from "./renderer/enableLilToon.js";
 export { LilToonMaterialFactory } from "./material/LilToonMaterialFactory.js";
 export type {
 	LilToonMaterialParameters,

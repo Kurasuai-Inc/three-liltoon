@@ -6,11 +6,15 @@ import {
 	MeshDistanceMaterial,
 	RGBADepthPacking,
 	SkinnedMesh,
+	type Camera,
 	type WebGLRenderer,
 	type Object3D,
 	type Texture,
 } from "three";
-import { LilToonMaterial } from "../material/LilToonMaterial.js";
+import {
+	LilToonMaterial,
+	prepareLilToonMaterialProgram,
+} from "../material/LilToonMaterial.js";
 import { isLilToonOutlineEnabled } from "../material/LilToonFeatureSet.js";
 import { setGlobalProperty } from "./LilToonUniformBinder.js";
 import { SceneColorPasses } from "./SceneColorPasses.js";
@@ -368,8 +372,39 @@ class AutomaticPasses {
 	}
 }
 
-type Installation = { release(): void; acquire(): () => void };
+type Installation = {
+	release(): void;
+	acquire(): () => void;
+	compile(scene: Object3D, camera: Camera): Promise<void>;
+};
 const installations = new WeakMap<WebGLRenderer, Installation>();
+
+function prepareLilToonPrograms(scene: Object3D): void {
+	scene.traverse((object) => {
+		const mesh = object as Mesh;
+		if (!mesh.isMesh) return;
+		const materials = Array.isArray(mesh.material)
+			? mesh.material
+			: [mesh.material];
+		for (const material of materials)
+			if (material instanceof LilToonMaterial)
+				prepareLilToonMaterialProgram(material);
+	});
+}
+
+/** Compile the lilToon variants currently selected for a scene before its first draw. */
+export function compileLilToonAsync(
+	renderer: WebGLRenderer,
+	scene: Object3D,
+	camera: Camera,
+): Promise<void> {
+	const installation = installations.get(renderer);
+	if (!installation)
+		throw new Error(
+			"Call enableLilToon(renderer) before compiling lilToon materials.",
+		);
+	return installation.compile(scene, camera);
+}
 
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
 export function enableLilToon(renderer: WebGLRenderer): () => void {
@@ -383,39 +418,38 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		dispose = renderer.dispose;
 	let users = 0,
 		disposed = false;
+	const prepare = (scene: Object3D): (() => void) => {
+		const restore: (() => void)[] = [];
+		try {
+			restore.push(passes.prepare(scene));
+			restore.push(sceneColors.prepare(renderer, scene, render));
+			restore.push(fur.prepare(renderer, scene, render));
+			restore.push(transparency.prepare(renderer, scene, render));
+		} catch (error) {
+			restore.reverse().forEach((undo) => undo());
+			throw error;
+		}
+		return () => restore.reverse().forEach((undo) => undo());
+	};
 	const wrapped: WebGLRenderer["render"] = function (scene, camera) {
 		passes.begin();
 		const previous = scene.onBeforeRender;
 		const original = originalHooks.get(previous) ?? previous;
 		let restore: (() => void) | undefined;
-		let restoreColors: (() => void) | undefined;
-		let restoreFur: (() => void) | undefined;
-		let restoreTransparency: (() => void) | undefined;
 		const hook: Object3D["onBeforeRender"] = function (
 			this: Object3D,
 			...args
 		) {
 			original.apply(this, args);
-			restore ??= passes.prepare(scene);
-			restoreColors ??= sceneColors.prepare(renderer, scene, render);
-			restoreFur ??= fur.prepare(renderer, scene, render);
-			restoreTransparency ??= transparency.prepare(renderer, scene, render);
+			restore ??= prepare(scene);
 		};
 		originalHooks.set(hook, original);
 		scene.onBeforeRender = hook;
 		try {
 			// Three invokes the scene hook before collecting render lists and shadows.
-			if (!(scene as { isScene?: boolean }).isScene) {
-				restore = passes.prepare(scene);
-				restoreColors = sceneColors.prepare(renderer, scene, render);
-				restoreFur = fur.prepare(renderer, scene, render);
-				restoreTransparency = transparency.prepare(renderer, scene, render);
-			}
+			if (!(scene as { isScene?: boolean }).isScene) restore = prepare(scene);
 			render.call(renderer, scene, camera);
 		} finally {
-			restoreTransparency?.();
-			restoreFur?.();
-			restoreColors?.();
 			restore?.();
 			if (scene.onBeforeRender === hook) scene.onBeforeRender = previous;
 			passes.end();
@@ -426,6 +460,18 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		dispose.call(renderer);
 	};
 	const installation: Installation = {
+		compile: async (scene, camera) => {
+			passes.begin();
+			let restore: (() => void) | undefined;
+			try {
+				restore = prepare(scene);
+				prepareLilToonPrograms(scene);
+				await renderer.compileAsync(scene, camera);
+			} finally {
+				restore?.();
+				passes.end();
+			}
+		},
 		release: () => {
 			if (disposed) return;
 			disposed = true;

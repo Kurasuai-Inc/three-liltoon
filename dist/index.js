@@ -1,6 +1,6 @@
-export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-S4AGWP3X.js';
-import { LilToonMaterial, setGlobalProperty, applyLilToonPassState, isLilToonOutlineEnabled } from './chunk-6G2DFOLB.js';
-export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-6G2DFOLB.js';
+export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-GMOZ6M27.js';
+import { LilToonMaterial, setGlobalProperty, applyLilToonPassState, isLilToonOutlineEnabled, prepareLilToonMaterialProgram } from './chunk-MRW62UCK.js';
+export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-MRW62UCK.js';
 import { MeshBasicMaterial, MeshDepthMaterial, RGBADepthPacking, MeshDistanceMaterial, SkinnedMesh, Mesh, OneFactor, ZeroFactor, CustomBlending, BufferGeometry, Scene, Vector4, SRGBColorSpace, HalfFloatType, FloatType, Vector2, NoColorSpace, UnsignedByteType, FramebufferTexture, DataTexture, RGBAFormat, Float32BufferAttribute, Uint32BufferAttribute, Vector3, Matrix4, WebGLRenderTarget, NearestFilter, RawShaderMaterial, GLSL3, PlaneGeometry } from 'three';
 
 // src/renderer/passOwnership.ts
@@ -1327,6 +1327,35 @@ var AutomaticPasses = class {
   }
 };
 var installations = /* @__PURE__ */ new WeakMap();
+function compileLilToonPrograms(renderer, scene, camera) {
+  const traverse = scene.traverse;
+  scene.traverse = function(callback) {
+    return traverse.call(this, (object) => {
+      const mesh = object;
+      if (mesh.isMesh) {
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of materials)
+          if (material instanceof LilToonMaterial)
+            prepareLilToonMaterialProgram(material, mesh.geometry);
+      }
+      callback(object);
+    });
+  };
+  try {
+    return renderer.compileAsync(scene, camera).then(() => {
+    });
+  } finally {
+    scene.traverse = traverse;
+  }
+}
+function compileLilToonAsync(renderer, scene, camera) {
+  const installation = installations.get(renderer);
+  if (!installation)
+    throw new Error(
+      "Call enableLilToon(renderer) before compiling lilToon materials."
+    );
+  return installation.compile(scene, camera);
+}
 function enableLilToon(renderer) {
   const existing = installations.get(renderer);
   if (existing) return existing.acquire();
@@ -1336,35 +1365,34 @@ function enableLilToon(renderer) {
   const transparency = new TransparencyPasses();
   const render = renderer.render, dispose = renderer.dispose;
   let users = 0, disposed = false;
+  const prepare = (scene) => {
+    const restore = [];
+    try {
+      restore.push(passes.prepare(scene));
+      restore.push(sceneColors.prepare(renderer, scene, render));
+      restore.push(fur.prepare(renderer, scene, render));
+      restore.push(transparency.prepare(renderer, scene, render));
+    } catch (error) {
+      restore.reverse().forEach((undo) => undo());
+      throw error;
+    }
+    return () => restore.reverse().forEach((undo) => undo());
+  };
   const wrapped = function(scene, camera) {
     passes.begin();
     const previous = scene.onBeforeRender;
     const original = originalHooks.get(previous) ?? previous;
     let restore;
-    let restoreColors;
-    let restoreFur;
-    let restoreTransparency;
     const hook = function(...args) {
       original.apply(this, args);
-      restore ??= passes.prepare(scene);
-      restoreColors ??= sceneColors.prepare(renderer, scene, render);
-      restoreFur ??= fur.prepare(renderer, scene, render);
-      restoreTransparency ??= transparency.prepare(renderer, scene, render);
+      restore ??= prepare(scene);
     };
     originalHooks.set(hook, original);
     scene.onBeforeRender = hook;
     try {
-      if (!scene.isScene) {
-        restore = passes.prepare(scene);
-        restoreColors = sceneColors.prepare(renderer, scene, render);
-        restoreFur = fur.prepare(renderer, scene, render);
-        restoreTransparency = transparency.prepare(renderer, scene, render);
-      }
+      if (!scene.isScene) restore = prepare(scene);
       render.call(renderer, scene, camera);
     } finally {
-      restoreTransparency?.();
-      restoreFur?.();
-      restoreColors?.();
       restore?.();
       if (scene.onBeforeRender === hook) scene.onBeforeRender = previous;
       passes.end();
@@ -1375,6 +1403,17 @@ function enableLilToon(renderer) {
     dispose.call(renderer);
   };
   const installation = {
+    compile: async (scene, camera) => {
+      passes.begin();
+      let restore;
+      try {
+        restore = prepare(scene);
+        await compileLilToonPrograms(renderer, scene, camera);
+      } finally {
+        restore?.();
+        passes.end();
+      }
+    },
     release: () => {
       if (disposed) return;
       disposed = true;
@@ -11403,4 +11442,4 @@ var LILTOON_RENDER_RECIPES = {
   }
 };
 
-export { FurPass, GemPass, LILTOON_PROPERTIES, LILTOON_RENDER_RECIPES, RefractionPass, enableLilToon };
+export { FurPass, GemPass, LILTOON_PROPERTIES, LILTOON_RENDER_RECIPES, RefractionPass, compileLilToonAsync, enableLilToon };

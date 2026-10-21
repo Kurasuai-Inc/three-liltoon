@@ -4,12 +4,12 @@ Start with the [README tutorials](../README.md).
 
 ## Entry points
 
-| Import                          | Main exports                                                                                  |
-| ------------------------------- | --------------------------------------------------------------------------------------------- |
-| `@mochiya/three-liltoon`        | `LilToonMaterial`, `enableLilToon`, material factory/loader, property metadata, warning types |
-| `@mochiya/three-liltoon/gltf`   | `GLTFLilToonExtension`, extension version/name and warning types                              |
-| `@mochiya/three-liltoon/vrm`    | `enableLilToonVRM`, expression binding install/uninstall helpers                              |
-| `@mochiya/three-liltoon/schema` | JSON Schema for a glTF material extension payload                                             |
+| Import                          | Main exports                                                                                                         |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `@mochiya/three-liltoon`        | `LilToonMaterial`, `enableLilToon`, `compileLilToonAsync`, material factory/loader, property metadata, warning types |
+| `@mochiya/three-liltoon/gltf`   | `GLTFLilToonExtension`, extension version/name and warning types                                                     |
+| `@mochiya/three-liltoon/vrm`    | `enableLilToonVRM`, expression binding install/uninstall helpers                                                     |
+| `@mochiya/three-liltoon/schema` | JSON Schema for a glTF material extension payload                                                                    |
 
 Only `/vrm` requires the optional Three-VRM peer. React Three Fiber is a host integration, not a package dependency.
 
@@ -50,6 +50,8 @@ For standalone JSON, `LilToonMaterialLoader` loads properties but does not resol
 ## Renderer lifetime and React Three Fiber
 
 Call `enableLilToon(renderer)` for automatic outlines, shadow casters and special-mode passes. Each call returns an independent, idempotent release function; the integration remains installed while any lease is active. Renderer disposal also releases it. No adapter or frame-boundary API is required.
+
+After the scene's materials, textures, lights and camera are ready, call `await compileLilToonAsync(renderer, scene, camera)` before the first draw to compile the lilToon variants selected for the current scene. Install `enableLilToon(renderer)` first so automatic outline and render-pass materials are staged through the same preparation path used by `renderer.render`. Run it again after changing shader-defining material inputs. It delegates to Three.js `renderer.compileAsync` and does not render the scene.
 
 For React Three Fiber, mount this component inside the canvas:
 

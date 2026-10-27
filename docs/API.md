@@ -6,7 +6,7 @@ Start with the [README tutorials](../README.md).
 
 | Import                          | Main exports                                                                                                         |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `@mochiya/three-liltoon`        | `LilToonMaterial`, `enableLilToon`, `compileLilToonAsync`, material factory/loader, property metadata, warning types |
+| `@mochiya/three-liltoon`        | `LilToonMaterial`, `enableLilToon`, `compileLilToonAsync`, `prepareLilToonAuxiliaryVariants`, material factory/loader, property metadata, warning types |
 | `@mochiya/three-liltoon/gltf`   | `GLTFLilToonExtension`, extension version/name and warning types                                                     |
 | `@mochiya/three-liltoon/vrm`    | `enableLilToonVRM`, expression binding install/uninstall helpers                                                     |
 | `@mochiya/three-liltoon/schema` | JSON Schema for a glTF material extension payload                                                                    |
@@ -52,6 +52,20 @@ For standalone JSON, `LilToonMaterialLoader` loads properties but does not resol
 Call `enableLilToon(renderer)` for automatic outlines, shadow casters and special-mode passes. Each call returns an independent, idempotent release function; the integration remains installed while any lease is active. Renderer disposal also releases it. No adapter or frame-boundary API is required.
 
 After the scene's materials, textures, lights and camera are ready, call `await compileLilToonAsync(renderer, scene, camera)` before the first draw to compile the lilToon variants selected for the current scene. Install `enableLilToon(renderer)` first so automatic outline and render-pass materials are staged through the same preparation path used by `renderer.render`. Run it again after changing shader-defining material inputs. It delegates to Three.js `renderer.compileAsync` and does not render the scene.
+
+Transparent materials can use auxiliary transparent-pre and outline proxies created from per-object render hooks. Prepare those proxy scenes without drawing, then include them in the same async compilation batch:
+
+```ts
+const auxiliaryScenes = prepareLilToonAuxiliaryVariants(renderer, scene);
+await Promise.all([
+  compileLilToonAsync(renderer, scene, camera),
+  ...auxiliaryScenes.map((auxiliaryScene) =>
+    compileLilToonAsync(renderer, auxiliaryScene, camera),
+  ),
+]);
+```
+
+The returned scenes borrow their source meshes' geometry and are owned by the renderer integration. Do not draw or dispose them; the integration releases their cached proxies with the source material/geometry or renderer.
 
 For React Three Fiber, mount this component inside the canvas:
 

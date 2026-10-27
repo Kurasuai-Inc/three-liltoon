@@ -38,6 +38,7 @@ import {
 	compileLilToonAsync,
 	enableLilToon,
 	LilToonMaterial,
+	prepareLilToonAuxiliaryVariants,
 } from "../../src/index.js";
 
 function makeRenderer(draw: (scene: Scene, camera: PerspectiveCamera) => void) {
@@ -84,6 +85,54 @@ function programSignature(material: LilToonMaterial): string {
 }
 
 describe("compileLilToonAsync", () => {
+	it("prepares transparent auxiliary proxy scenes without drawing them", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			material = new LilToonMaterial({
+				renderMode: "transparent",
+				transparencyMode: "two-pass",
+				properties: { _UseOutline: 1, _OutlineWidth: 0.1 },
+			}),
+			geometry = new BoxGeometry(),
+			mesh = new Mesh(geometry, material);
+		scene.add(mesh);
+		const renderer = makeRenderer(() => {}),
+			compiledPasses: string[] = [],
+			compileAsync = vi.fn(async (target: Scene) => {
+				target.traverse((object) => {
+					const proxy = object as Mesh;
+					if (!proxy.isMesh || !(proxy.material instanceof LilToonMaterial))
+						return;
+					compiledPasses.push(proxy.material.pass);
+				});
+				return target;
+			});
+		(
+			renderer as unknown as { compileAsync: typeof compileAsync }
+		).compileAsync = compileAsync;
+		const release = enableLilToon(renderer);
+		const render = vi.spyOn(renderer, "render");
+
+		const auxiliaryScenes = prepareLilToonAuxiliaryVariants(renderer, scene);
+		expect(auxiliaryScenes).toHaveLength(2);
+		expect(render).not.toHaveBeenCalled();
+		expect(mesh.children).toHaveLength(0);
+		await Promise.all(
+			auxiliaryScenes.map((auxiliaryScene) =>
+				compileLilToonAsync(renderer, auxiliaryScene, camera),
+			),
+		);
+		expect(new Set(compiledPasses)).toEqual(
+			new Set(["transparent-pre", "outline"]),
+		);
+		expect(compileAsync).toHaveBeenCalledTimes(2);
+		expect(mesh.geometry.drawRange).toEqual({ start: 0, count: Infinity });
+
+		release();
+		material.dispose();
+		geometry.dispose();
+	});
+
 	it("compiles the same selected forward and outline keys used by the first draw", async () => {
 		const scene = new Scene(),
 			camera = new PerspectiveCamera(),

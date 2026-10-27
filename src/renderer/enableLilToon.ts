@@ -376,6 +376,7 @@ type Installation = {
 	release(): void;
 	acquire(): () => void;
 	compile(scene: Object3D, camera: Camera): Promise<void>;
+	prepareAuxiliaryVariants(scene: Object3D): Object3D[];
 };
 const installations = new WeakMap<WebGLRenderer, Installation>();
 
@@ -423,6 +424,22 @@ export function compileLilToonAsync(
 			"Call enableLilToon(renderer) before compiling lilToon materials.",
 		);
 	return installation.compile(scene, camera);
+}
+
+/**
+ * Build the cached transparent-pre and transparent-outline proxy scenes without
+ * drawing them. Pass the returned scenes to compileLilToonAsync before display.
+ */
+export function prepareLilToonAuxiliaryVariants(
+	renderer: WebGLRenderer,
+	scene: Object3D,
+): Object3D[] {
+	const installation = installations.get(renderer);
+	if (!installation)
+		throw new Error(
+			"Call enableLilToon(renderer) before preparing lilToon auxiliary variants.",
+		);
+	return installation.prepareAuxiliaryVariants(scene);
 }
 
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
@@ -479,6 +496,8 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		dispose.call(renderer);
 	};
 	const installation: Installation = {
+		prepareAuxiliaryVariants: (scene) =>
+			transparency.prepareAuxiliaryVariants(scene),
 		compile: async (scene, camera) => {
 			passes.begin();
 			let restore: (() => void) | undefined;

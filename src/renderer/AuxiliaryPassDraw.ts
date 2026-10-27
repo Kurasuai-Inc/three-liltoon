@@ -37,24 +37,23 @@ export function syncPassMaterial(
 	);
 }
 
+type AuxiliaryRecipe = {
+	mesh: Mesh;
+	owner: Object3D;
+	sourceGeometry: BufferGeometry;
+	mode: string;
+	transparencyMode: string;
+	source: LilToonMaterial;
+	geometry: BufferGeometry;
+	material: LilToonMaterial;
+	proxy: Mesh;
+	scene: Scene;
+	release(): void;
+};
+
 /** Cached pass proxy. Borrows source geometry, including Three's morph texture. */
 export class AuxiliaryPassDraw {
-	private recipes = new Map<
-		string,
-		{
-			mesh: Mesh;
-			owner: Object3D;
-			sourceGeometry: BufferGeometry;
-			mode: string;
-			transparencyMode: string;
-			source: LilToonMaterial;
-			geometry: BufferGeometry;
-			material: LilToonMaterial;
-			proxy: Mesh;
-			scene: Scene;
-			release(): void;
-		}
-	>();
+	private recipes = new Map<string, AuxiliaryRecipe>();
 	private depth = 0;
 	begin() {
 		this.depth++;
@@ -71,17 +70,12 @@ export class AuxiliaryPassDraw {
 					r.release();
 		}
 	}
-	draw(
-		renderer: WebGLRenderer,
-		render: WebGLRenderer["render"],
+	private prepareRecipe(
 		mesh: Mesh,
 		source: LilToonMaterial,
 		pass: LilToonPass,
 		scene: Scene,
-		camera: Camera,
-		group: { start: number; count: number } | null,
-		configure?: (material: LilToonMaterial) => void,
-	) {
+	): AuxiliaryRecipe {
 		const key = `${mesh.uuid}:${mesh.geometry.uuid}:${source.uuid}:${pass}`;
 		let r = this.recipes.get(key);
 		if (
@@ -132,8 +126,43 @@ export class AuxiliaryPassDraw {
 			sourceGeometry.addEventListener("dispose", release);
 		}
 		r.owner = scene;
+		syncPassMaterial(source, r.material);
+		r.proxy.matrix.copy(mesh.matrixWorld);
+		r.proxy.matrixWorld.copy(mesh.matrixWorld);
+		r.proxy.layers.mask = mesh.layers.mask;
+		r.proxy.morphTargetInfluences = mesh.morphTargetInfluences;
+		if ((r.proxy as SkinnedMesh).isSkinnedMesh) {
+			const skin = mesh as SkinnedMesh,
+				out = r.proxy as SkinnedMesh;
+			out.skeleton = skin.skeleton;
+			out.bindMode = skin.bindMode;
+			out.bindMatrix.copy(skin.bindMatrix);
+			out.bindMatrixInverse.copy(skin.bindMatrixInverse);
+		}
+		return r;
+	}
+	/** Create the cached proxy used by an auxiliary pass without issuing a draw. */
+	prepare(
+		mesh: Mesh,
+		source: LilToonMaterial,
+		pass: LilToonPass,
+		scene: Scene,
+	): Scene {
+		return this.prepareRecipe(mesh, source, pass, scene).scene;
+	}
+	draw(
+		renderer: WebGLRenderer,
+		render: WebGLRenderer["render"],
+		mesh: Mesh,
+		source: LilToonMaterial,
+		pass: LilToonPass,
+		scene: Scene,
+		camera: Camera,
+		group: { start: number; count: number } | null,
+		configure?: (material: LilToonMaterial) => void,
+	) {
+		const r = this.prepareRecipe(mesh, source, pass, scene);
 		const { geometry, material, proxy } = r;
-		syncPassMaterial(source, material);
 		const { start: originalStart, count: originalCount } = geometry.drawRange;
 		const start = Math.max(originalStart, group?.start ?? 0);
 		const count = Math.max(
@@ -143,17 +172,6 @@ export class AuxiliaryPassDraw {
 				group ? group.start + group.count : Infinity,
 			) - start,
 		);
-		proxy.matrix.copy(mesh.matrixWorld);
-		proxy.layers.mask = mesh.layers.mask;
-		proxy.morphTargetInfluences = mesh.morphTargetInfluences;
-		if ((proxy as SkinnedMesh).isSkinnedMesh) {
-			const skin = mesh as SkinnedMesh,
-				out = proxy as SkinnedMesh;
-			out.skeleton = skin.skeleton;
-			out.bindMode = skin.bindMode;
-			out.bindMatrix.copy(skin.bindMatrix);
-			out.bindMatrixInverse.copy(skin.bindMatrixInverse);
-		}
 		const before = material.onBeforeRender;
 		material.onBeforeRender = (
 			renderer,

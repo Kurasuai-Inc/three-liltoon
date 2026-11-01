@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	AmbientLight,
 	BoxGeometry,
 	Float32BufferAttribute,
 	Group,
@@ -84,6 +85,86 @@ function programSignature(material: LilToonMaterial): string {
 }
 
 describe("compileLilToonAsync", () => {
+	it("precompiles the cached transparent pre and outline programs used by the first draw", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			material = new LilToonMaterial({
+				renderMode: "transparent",
+				properties: { _UseOutline: 1, _OutlineWidth: 0.1 },
+			}),
+			mesh = new Mesh(new BoxGeometry(), material);
+		material.transparencyMode = "two-pass";
+		scene.add(new AmbientLight());
+		scene.add(mesh);
+		const compiledKeys: string[] = [],
+			drawnKeys: string[] = [];
+		let renderer: WebGLRenderer;
+		renderer = makeRenderer((current, activeCamera) => {
+			current.traverse((object) => {
+				const drawable = object as Mesh;
+				if (!drawable.isMesh) return;
+				const currentMaterial = drawable.material as LilToonMaterial;
+				if (!(currentMaterial instanceof LilToonMaterial)) return;
+				const group = new Group();
+				drawable.onBeforeRender(
+					renderer,
+					current,
+					activeCamera,
+					drawable.geometry,
+					currentMaterial,
+					group,
+				);
+				currentMaterial.onBeforeRender(
+					renderer,
+					current,
+					activeCamera,
+					drawable.geometry,
+					drawable,
+					group,
+				);
+				drawnKeys.push(programSignature(currentMaterial));
+				drawable.onAfterRender(
+					renderer,
+					current,
+					activeCamera,
+					drawable.geometry,
+					currentMaterial,
+					group,
+				);
+			});
+		});
+		const compileAsync = vi.fn(async (target: Scene) => {
+			target.traverse((object) => {
+				const drawable = object as Mesh;
+				if (drawable.isMesh && drawable.material instanceof LilToonMaterial)
+					compiledKeys.push(programSignature(drawable.material));
+			});
+			return target;
+		});
+		(
+			renderer as unknown as { compileAsync: typeof compileAsync }
+		).compileAsync = compileAsync;
+		const release = enableLilToon(renderer);
+
+		await compileLilToonAsync(renderer, scene, camera);
+		expect(compileAsync).toHaveBeenCalledTimes(3);
+		expect(compileAsync.mock.calls[0]![0]).toBe(scene);
+		for (const [auxiliaryScene] of compileAsync.mock.calls.slice(1))
+			expect(
+				auxiliaryScene.children.some(
+					(child) => (child as AmbientLight).isLight,
+				),
+			).toBe(false);
+		expect(mesh.children).toHaveLength(0);
+		expect(new Set(compiledKeys).size).toBe(3);
+		renderer.render(scene, camera);
+		expect(new Set(drawnKeys)).toEqual(new Set(compiledKeys));
+
+		release();
+		material.dispose();
+		mesh.geometry.dispose();
+	});
+
 	it("compiles the same selected forward and outline keys used by the first draw", async () => {
 		const scene = new Scene(),
 			camera = new PerspectiveCamera(),
@@ -159,11 +240,11 @@ describe("compileLilToonAsync", () => {
 			[geometryWithOneMorph, 1],
 			[geometryWithTwoMorphs, 2],
 		] as const) {
-		const position = geometry.getAttribute("position");
-		geometry.morphAttributes.position = Array.from(
-			{ length: count },
-			() => new Float32BufferAttribute(position.array.slice(), 3),
-		);
+			const position = geometry.getAttribute("position");
+			geometry.morphAttributes.position = Array.from(
+				{ length: count },
+				() => new Float32BufferAttribute(position.array.slice(), 3),
+			);
 		}
 		const firstMesh = new Mesh(geometryWithOneMorph, material),
 			secondMesh = new Mesh(geometryWithTwoMorphs, material);
@@ -193,17 +274,17 @@ describe("compileLilToonAsync", () => {
 			});
 		});
 		const compileAsync = vi.fn(async (target: Scene) => {
-		target.traverse((object) => {
-			const mesh = object as Mesh;
-			if (!mesh.isMesh) return;
-			const materials = Array.isArray(mesh.material)
-				? mesh.material
-				: [mesh.material];
-			for (const currentMaterial of materials)
-				if (currentMaterial instanceof LilToonMaterial)
-					compiledKeys.push(programSignature(currentMaterial));
-		});
-		return target;
+			target.traverse((object) => {
+				const mesh = object as Mesh;
+				if (!mesh.isMesh) return;
+				const materials = Array.isArray(mesh.material)
+					? mesh.material
+					: [mesh.material];
+				for (const currentMaterial of materials)
+					if (currentMaterial instanceof LilToonMaterial)
+						compiledKeys.push(programSignature(currentMaterial));
+			});
+			return target;
 		});
 		(
 			renderer as unknown as { compileAsync: typeof compileAsync }

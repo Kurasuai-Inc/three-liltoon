@@ -385,12 +385,13 @@ function compileLilToonPrograms(
 	camera: Camera,
 ): Promise<void> {
 	const traverse = scene.traverse;
+	const traverseVisible = scene.traverseVisible;
 	// WebGLRenderer.compile() derives a program for each renderable while
 	// traversing, but does not invoke material.onBeforeRender(). Intercept that
 	// traversal briefly so each geometry contributes the same morph defines as
 	// its first draw, including when one material is shared by several meshes.
 	scene.traverse = function (callback) {
-		return traverse.call(this, (object) => {
+		return traverseVisible.call(this, (object) => {
 			const mesh = object as Mesh;
 			if (mesh.isMesh) {
 				const materials = Array.isArray(mesh.material)
@@ -484,7 +485,15 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 			let restore: (() => void) | undefined;
 			try {
 				restore = prepare(scene);
-				await compileLilToonPrograms(renderer, scene, camera);
+				// The auxiliary draw renders in separate unlit scenes. Compiling its proxy
+				// in the main scene creates a different light-dependent program key.
+				const auxiliaryScenes = transparency.prepareForCompile(scene);
+				await Promise.all([
+					compileLilToonPrograms(renderer, scene, camera),
+					...auxiliaryScenes.map((auxiliary) =>
+						compileLilToonPrograms(renderer, auxiliary, camera),
+					),
+				]);
 			} finally {
 				restore?.();
 				passes.end();

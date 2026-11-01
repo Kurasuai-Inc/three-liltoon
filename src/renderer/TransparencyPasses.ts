@@ -11,6 +11,58 @@ import { AuxiliaryPassDraw } from "./AuxiliaryPassDraw.js";
 /** Unity surface pass order, excluding deferred ForwardAdd and shadow parity. */
 export class TransparencyPasses {
 	private draws = new AuxiliaryPassDraw();
+	/** Return the exact unlit scenes used by the nested transparent draws. */
+	prepareForCompile(scene: Object3D): Scene[] {
+		const scenes: Scene[] = [];
+		const meshes: Mesh[] = [];
+		scene.traverseVisible((node) => {
+			if ((node as Mesh).isMesh) meshes.push(node as Mesh);
+		});
+		for (const mesh of meshes) {
+			const materials = Array.isArray(mesh.material)
+				? mesh.material
+				: [mesh.material];
+			const manualOutline = mesh.children.some(
+				(child) =>
+					(child as Mesh).isMesh &&
+					((child as Mesh).material as LilToonMaterial)?.pass === "outline",
+			);
+			for (const material of materials) {
+				if (
+					!(material instanceof LilToonMaterial) ||
+					material.renderMode !== "transparent" ||
+					material.pass !== "forward"
+				)
+					continue;
+				if (material.transparencyMode === "two-pass")
+					scenes.push(
+						this.draws.prepareForCompile(
+							mesh,
+							material,
+							"transparent-pre",
+							scene as Scene,
+						),
+					);
+				if (
+					!manualOutline &&
+					isLilToonOutlineEnabled(
+						material.lilToonProperties,
+						material.shaderVariant,
+					) &&
+					Number(material.lilToonProperties._OutlineWidth ?? 0) > 0
+				)
+					scenes.push(
+						this.draws.prepareForCompile(
+							mesh,
+							material,
+							"outline",
+							scene as Scene,
+						),
+					);
+			}
+		}
+		return scenes;
+	}
 	prepare(
 		renderer: WebGLRenderer,
 		scene: Object3D,

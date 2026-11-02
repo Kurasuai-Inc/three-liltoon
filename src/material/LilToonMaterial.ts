@@ -557,7 +557,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		return this;
 	}
 
-	private bindTextureViews(): void {
+	private bindTextureViews(collect?: Set<Texture>): void {
 		this.#textureViews.retain(this.#program.resources);
 		for (const resource of this.#program.resources) {
 			if (resource.property.startsWith("__")) continue;
@@ -570,9 +570,16 @@ export class LilToonMaterial extends RawShaderMaterial {
 				(texture as (Texture & { isCubeTexture?: boolean }) | null)
 					?.isCubeTexture,
 			);
-			this.uniforms[resource.uniform]!.value =
+			const selected =
 				this.#cubeSamplers.has(resource.uniform) === isCube ? texture : null;
+			this.uniforms[resource.uniform]!.value = selected;
+			if (selected) collect?.add(selected);
 		}
+	}
+
+	/** @internal Collect the exact views bound by the current draw pass. */
+	prepareTextureViews(views: Set<Texture>): void {
+		this.bindTextureViews(views);
 	}
 
 	override dispose(): void {

@@ -7,31 +7,36 @@ import {
 	Mesh,
 	PerspectiveCamera,
 	Scene,
+	Texture,
 	Vector2,
 	Vector4,
 	type WebGLRenderer,
 } from "three";
 
 vi.mock("../../src/shader/ShaderProgramLibrary.js", () => {
-	const makeProgram = (key: string) => ({
+	const makeProgram = (key: string, textures?: Record<string, unknown>) => ({
 		key,
 		vertexShader: "in vec4 position;\nvoid main() { gl_Position = position; }",
 		fragmentShader: "void main() {}",
-		samplerBindings: new Map(),
-		resources: [],
+		samplerBindings: textures?._MainTex
+			? new Map([["u_MainTex", "_MainTex"]])
+			: new Map(),
+		resources: textures?._MainTex
+			? [{ property: "_MainTex", uniform: "u_MainTex", sampler: "lil_sampler_linear" }]
+			: [],
 	});
 	return {
 		getLilToonShaderProgram: (
 			mode: string,
 			_properties: unknown,
-			_textures: unknown,
+			textures: Record<string, unknown> | undefined,
 			pass: unknown,
-		) => makeProgram(`${String(pass || "forward")}:${mode}`),
+		) => makeProgram(`${String(pass || "forward")}:${mode}`, textures),
 		getOutlineShaderProgram: (
 			_properties: unknown,
-			_textures: unknown,
+			textures: Record<string, unknown> | undefined,
 			mode: string,
-		) => makeProgram(`outline:${mode}`),
+		) => makeProgram(`outline:${mode}`, textures),
 	};
 });
 
@@ -85,6 +90,48 @@ function programSignature(material: LilToonMaterial): string {
 }
 
 describe("compileLilToonAsync", () => {
+	it("prepares the same texture view that the first and later draws bind", async () => {
+		const scene = new Scene();
+		const camera = new PerspectiveCamera();
+		const source = new Texture();
+		const material = new LilToonMaterial({ textures: { _MainTex: source } });
+		const mesh = new Mesh(new BoxGeometry(), material);
+		scene.add(mesh);
+		let renderer: WebGLRenderer;
+		renderer = makeRenderer((current, activeCamera) => {
+			material.onBeforeRender(
+				renderer, current, activeCamera, mesh.geometry, mesh, new Group(),
+			);
+		});
+		const cached = { __version: source.source.version };
+		const initTexture = vi.fn((view: Texture) => {
+			cached.__version = view.source.version;
+		});
+		Object.assign(renderer, {
+			compileAsync: vi.fn(async () => scene),
+			properties: { get: () => cached },
+			initTexture,
+		});
+		const release = enableLilToon(renderer);
+
+		await compileLilToonAsync(renderer, scene, camera);
+		const prepared = material.uniforms.u_MainTex!.value as Texture;
+		expect(initTexture).toHaveBeenCalledWith(prepared);
+		expect(prepared.source).toBe(source.source);
+		expect(cached.__version).toBe(source.source.version);
+		const version = source.source.version;
+		renderer.render(scene, camera);
+		renderer.render(scene, camera);
+		expect(material.uniforms.u_MainTex!.value).toBe(prepared);
+		expect(source.source.version).toBe(version);
+		expect(initTexture).toHaveBeenCalledOnce();
+
+		release();
+		material.dispose();
+		mesh.geometry.dispose();
+		source.dispose();
+	});
+
 	it("precompiles the cached transparent pre and outline programs used by the first draw", async () => {
 		const scene = new Scene(),
 			camera = new PerspectiveCamera(),

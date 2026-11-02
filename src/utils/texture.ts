@@ -73,6 +73,5 @@ export function normalizeLilToonTexture(
 	texture.flipY = false;
 	texture.wrapS ||= RepeatWrapping;
 	texture.wrapT ||= RepeatWrapping;
-	texture.needsUpdate = true;
 	return texture;
 }

@@ -412,6 +412,51 @@ function compileLilToonPrograms(
 	}
 }
 
+function prepareLilToonTextureViews(
+	renderer: WebGLRenderer,
+	roots: readonly Object3D[],
+): void {
+	const views = new Set<Texture>();
+	for (const root of roots)
+		root.traverseVisible((object) => {
+			const mesh = object as Mesh;
+			if (!mesh.isMesh) return;
+			const materials = Array.isArray(mesh.material)
+				? mesh.material
+				: [mesh.material];
+			for (const material of materials)
+				if (material instanceof LilToonMaterial)
+					material.prepareTextureViews(views);
+		});
+	if (views.size === 0) return;
+	const properties = (renderer as unknown as {
+		properties?: { get(value: object): { __version?: number } };
+	}).properties;
+	if (!properties)
+		throw new Error("WebGLRenderer texture cache is unavailable.");
+	// A clone can advance a shared Source after the caller uploaded it. Only
+	// refresh a Source when Three's actual GPU cache is behind that version.
+	const staleSources = new Set(
+		[...views]
+			.filter((view) => {
+				const cachedVersion = properties.get(view.source).__version;
+				return cachedVersion !== undefined && cachedVersion !== view.source.version;
+			})
+			.map((view) => view.source),
+	);
+	const stale = [...views].filter((view) => staleSources.has(view.source));
+	// One mark per shared Source is enough to advance its image version. Marking
+	// every material view causes repeated transfers of the same GPU image.
+	const marked = new Set<Texture["source"]>();
+	for (const view of stale)
+		if (!marked.has(view.source)) {
+			view.needsUpdate = true;
+			marked.add(view.source);
+		}
+	// Distinct sampler/color-space cache keys still need their own GL handle.
+	for (const view of stale) renderer.initTexture(view);
+}
+
 /** Compile the lilToon variants currently selected for a scene before its first draw. */
 export function compileLilToonAsync(
 	renderer: WebGLRenderer,
@@ -488,12 +533,15 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 				// The auxiliary draw renders in separate unlit scenes. Compiling its proxy
 				// in the main scene creates a different light-dependent program key.
 				const auxiliaryScenes = transparency.prepareForCompile(scene);
-				await Promise.all([
+				const programs = [
 					compileLilToonPrograms(renderer, scene, camera),
 					...auxiliaryScenes.map((auxiliary) =>
 						compileLilToonPrograms(renderer, auxiliary, camera),
 					),
-				]);
+				];
+				// Submit texture uploads while async shader compilation is pending.
+				prepareLilToonTextureViews(renderer, [scene, ...auxiliaryScenes]);
+				await Promise.all(programs);
 			} finally {
 				restore?.();
 				passes.end();

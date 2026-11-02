@@ -27,4 +27,22 @@ describe("per-use texture color spaces", () => {
 		expect(linearView?.colorSpace).toBe(LinearSRGBColorSpace);
 		expect(source.colorSpace).toBe(SRGBColorSpace);
 	});
+
+	it("creates a view once and does not invalidate the shared image on later binds", () => {
+		const source = new Texture();
+		const views = new TextureViews();
+		const resource = {
+			property: "_MainTex",
+			uniform: "u_MainTex",
+			sampler: "lil_sampler_linear",
+		} as never;
+		const initialVersion = source.source.version;
+		const first = views.get(resource, { _MainTex: source });
+		expect(source.source.version).toBe(initialVersion + 1);
+		for (let frame = 0; frame < 3; frame++)
+			expect(views.get(resource, { _MainTex: source })).toBe(first);
+		expect(source.source.version).toBe(initialVersion + 1);
+		views.dispose();
+		source.dispose();
+	});
 });

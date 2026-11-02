@@ -62,7 +62,6 @@ export class TextureViews {
 				view.minFilter === NearestMipmapLinearFilter
 					? NearestFilter
 					: LinearFilter;
-		view.needsUpdate = true;
 		this.views.set(resource.uniform, { signature, texture: view });
 		return view;
 	}

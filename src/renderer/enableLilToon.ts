@@ -156,6 +156,8 @@ class AutomaticPasses {
 			source.addEventListener("dispose", recipe.release);
 		}
 		recipe.owners.set(mesh, scene);
+		// Keep automatic outlines on the same explicit capture clock on every draw.
+		recipe.outline.renderTimeSeconds = source.renderTimeSeconds;
 		// Read mutable standard Color edits as well as original property setters.
 		source.getProperty("_Color");
 		const propertiesChanged =

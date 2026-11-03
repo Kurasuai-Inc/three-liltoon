@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Capture time runtime check</title>
+	</head>
+	<body>
+		<script type="module">
+			import { verifyRenderTime } from "./render-time-fixture.ts";
+			window.captureTimeResult = verifyRenderTime();
+		</script>
+	</body>
+</html>

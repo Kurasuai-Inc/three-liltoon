@@ -35,6 +35,8 @@ export interface LilToonMaterialParameters {
 	map?: Texture | null;
 	alphaTest?: number;
 	name?: string;
+	/** Explicit capture clock; null/default uses elapsed wall time. Not a serialized material property. */
+	renderTimeSeconds?: number | null;
 	renderMode?: LilToonRenderMode;
 	/** Original Unity shader name; lilToon uses Outline shader variants to enable its outline pass. */
 	shaderVariant?: string;

@@ -19,6 +19,8 @@ export function syncPassMaterial(
 	target: LilToonMaterial,
 ) {
 	source.getProperty("_Color");
+	// Capture time changes independently of shader/property revisions.
+	target.renderTimeSeconds = source.renderTimeSeconds;
 	target.renderMode = source.renderMode;
 	target.transparencyMode = source.transparencyMode;
 	for (const [key, value] of Object.entries(source.lilToonProperties)) {

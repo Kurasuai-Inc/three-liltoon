@@ -173,6 +173,21 @@ export class LilToonMaterial extends RawShaderMaterial {
 	readonly #textureColorSpaces: Readonly<Record<string, "srgb" | "linear">>;
 	#trackedPropertyValues = new WeakMap<object, object>();
 	readonly #startedAt = performance.now();
+	#renderTimeSeconds: number | null = null;
+
+	/** Explicit shader clock for capture. Null resumes the existing wall clock. */
+	get renderTimeSeconds(): number | null {
+		return this.#renderTimeSeconds;
+	}
+
+	set renderTimeSeconds(value: number | null) {
+		if (value !== null && (!Number.isFinite(value) || value < 0)) {
+			throw new RangeError(
+				"renderTimeSeconds must be null or finite nonnegative seconds",
+			);
+		}
+		this.#renderTimeSeconds = value;
+	}
 
 	get propertyRevision(): number {
 		return this.#propertyRevision;
@@ -313,6 +328,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.transparencyMode = parameters.transparencyMode ?? "normal";
 		this.forceSinglePass = true;
 		this.globalUniforms = globalUniforms;
+		this.renderTimeSeconds = parameters.renderTimeSeconds ?? null;
 		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.#samplerBindings = program.samplerBindings;
 		this.#textureColorSpaces = parameters.textureColorSpaces ?? {};
@@ -419,7 +435,8 @@ export class LilToonMaterial extends RawShaderMaterial {
 		) => {
 			this.refreshProgram();
 			this.bindTextureViews();
-			const elapsed = (performance.now() - this.#startedAt) / 1000;
+			const elapsed =
+				this.#renderTimeSeconds ?? (performance.now() - this.#startedAt) / 1000;
 			updateObjectCameraUniforms(
 				this.globalUniforms,
 				renderer,
@@ -598,6 +615,7 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.uniforms = uniforms;
 		this.#morphWeights.dispose();
 		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
+		this.renderTimeSeconds = source.renderTimeSeconds;
 		this.renderMode = source.renderMode;
 		this.shaderVariant = source.shaderVariant;
 		this.pass = source.pass;

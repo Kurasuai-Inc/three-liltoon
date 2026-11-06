@@ -6,14 +6,10 @@ Unity probe coefficients or scene lights that exercise `LilToonLightAdapter`.
 Use the latter for before/after adapter captures; use the former to compare
 lilToon's SH packing against Unity's `ambientProbe`.
 
-Start it through the workspace managed server with:
+Start a local Vite server from the project directory with:
 
 ```powershell
-pwsh D:\AgentWorkspace\private\bin\serve.ps1 `
-  -Name three-liltoon-ambient-capture `
-  -Cmd node `
-  -Args '"D:\path\to\project\node_modules\vite\bin\vite.js" --host 127.0.0.1 --port {port} --strictPort' `
-  -Cwd D:\path\to\project
+node node_modules/vite/bin/vite.js --host 127.0.0.1 --port <port> --strictPort
 ```
 
 Open `/examples/ambient-capture/?profile=<URL-encoded-profile-URL>`. The profile
@@ -98,8 +94,8 @@ PNG (same pixel dimensions):
 ```powershell
 node tools/capture/ambient-pair.mjs `
   --url "<managed-viewer-url>/examples/ambient-capture/?profile=<profile-url>" `
-  --out "D:/AgentWorkspace/tmp/liltoon-support-20261014/out/three-flat.png" `
-  --unity "D:/AgentWorkspace/tmp/liltoon-support-20261014/out/unity-flat.png"
+  --out "<output-dir>/three-flat.png" `
+  --unity "<output-dir>/unity-flat.png"
 ```
 
 The script writes the Three PNG, metadata JSON, side-by-side PNG, and mean

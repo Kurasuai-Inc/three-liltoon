@@ -22,9 +22,8 @@ samples are bitwise deterministic.
 
 ## CI toolchain
 
-The existing 4090 `three-chara-light` self-hosted runner uses Node 24.22.1,
-`npm ci`, the pinned lilToon git submodule, and the Vulkan SDK 1.4.357.1
-binaries under `/home/kurasuai4090/.local/share/vulkan-sdk/1.4.357.1/x86_64`.
+The self-hosted CI runner uses Node 24.22.1, `npm ci`, the pinned lilToon git
+submodule, and the Vulkan SDK 1.4.357.1 binaries installed on the runner.
 This persistent tool installation is independent of review worktrees.
 `tools:check` checks the repository's pinned DXC/SPIRV-Tools versions before
 shader generation. The installed executable SHA-256 values are:

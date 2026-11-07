@@ -118,45 +118,106 @@ describe("automatic material inputs", () => {
 		source.dispose();
 		mesh.geometry.dispose();
 	});
-	it("retains shared scene resources through other scenes and cleans up removed owners", () => {
-		const first = new Scene(),
-			second = new Scene(),
-			fullscreen = new Scene();
+	it("keeps one helper set and program identity across a temporary shared-material pass", () => {
+		const scene = new Scene();
 		const source = outlined();
-		const a = new Mesh(new BoxGeometry(), source),
-			b = new Mesh(new BoxGeometry(), source);
-		first.add(a);
-		second.add(b);
-		let outline: Material | undefined;
-		const renderer = harness((scene) => {
-			const mesh = scene === first ? a : scene === second ? b : undefined;
-			if (mesh?.parent) {
-				const current = (mesh.children[0] as Mesh).material as Material;
-				if (outline) expect(current).toBe(outline);
-				outline = current;
+		const a: Mesh = new Mesh(new BoxGeometry(), source);
+		const b: Mesh = new Mesh(new BoxGeometry(), source);
+		scene.add(a, b);
+		const occluder = new MeshBasicMaterial({ color: 0x000000 });
+		const helpers: {
+			outline: Material;
+			depth: Material;
+			distance: Material;
+		}[] = [];
+		const renderer = harness((current) => {
+			if (current !== scene) return;
+			for (const mesh of [a, b]) {
+				const outline = (mesh.children[0] as Mesh | undefined)?.material;
+				if (outline)
+					helpers.push({
+						outline: outline as Material,
+						depth: mesh.customDepthMaterial!,
+						distance: mesh.customDistanceMaterial!,
+					});
 			}
 		});
-		const release = enableLilToon(renderer),
-			camera = new PerspectiveCamera();
-		renderer.render(first, camera);
-		const disposed = vi.spyOn(outline!, "dispose");
-		renderer.render(fullscreen, camera);
-		renderer.render(second, camera);
-		a.visible = false;
-		first.overrideMaterial = new MeshBasicMaterial();
-		renderer.render(first, camera);
-		first.remove(a);
-		renderer.render(fullscreen, camera);
-		expect(disposed).not.toHaveBeenCalled();
-		second.remove(b);
-		renderer.render(fullscreen, camera);
-		expect(disposed).toHaveBeenCalledOnce();
+		const release = enableLilToon(renderer);
+		const camera = new PerspectiveCamera();
+		renderer.render(scene, camera);
+		const first = helpers[0]!;
+		const disposals = [first.outline, first.depth, first.distance].map(
+			(material) => vi.spyOn(material, "dispose"),
+		);
+		a.material = occluder;
+		b.material = occluder;
+		renderer.render(scene, camera);
+		a.material = source;
+		b.material = source;
+		renderer.render(scene, camera);
+		expect(helpers).toHaveLength(4);
+		for (const helper of helpers) {
+			expect(helper.outline).toBe(first.outline);
+			expect(helper.depth).toBe(first.depth);
+			expect(helper.distance).toBe(first.distance);
+		}
+		for (const disposal of disposals) expect(disposal).not.toHaveBeenCalled();
 		release();
-		expect(disposed).toHaveBeenCalledOnce();
+		for (const disposal of disposals) expect(disposal).toHaveBeenCalledOnce();
 		source.dispose();
+		occluder.dispose();
 		a.geometry.dispose();
 		b.geometry.dispose();
-		first.overrideMaterial.dispose();
+	});
+	it("releases outline and shadow helpers when the source material is disposed", () => {
+		const scene = new Scene();
+		const source = outlined();
+		const mesh = new Mesh(new BoxGeometry(), source);
+		scene.add(mesh);
+		let outline: Material | undefined;
+		let depth: Material | undefined;
+		let distance: Material | undefined;
+		const renderer = harness(() => {
+			outline = (mesh.children[0] as Mesh).material as Material;
+			depth = mesh.customDepthMaterial;
+			distance = mesh.customDistanceMaterial;
+		});
+		const release = enableLilToon(renderer);
+		renderer.render(scene, new PerspectiveCamera());
+		const outlineDisposed = vi.spyOn(outline!, "dispose");
+		const depthDisposed = vi.spyOn(depth!, "dispose");
+		const distanceDisposed = vi.spyOn(distance!, "dispose");
+		source.dispose();
+		expect(outlineDisposed).toHaveBeenCalledOnce();
+		expect(depthDisposed).toHaveBeenCalledOnce();
+		expect(distanceDisposed).toHaveBeenCalledOnce();
+		release();
+		mesh.geometry.dispose();
+	});
+	it("leaves no helper materials after an avatar is unloaded", () => {
+		const avatar = new Scene();
+		const source = outlined();
+		const mesh = new Mesh(new BoxGeometry(), source);
+		avatar.add(mesh);
+		let outline: Material | undefined;
+		let depth: Material | undefined;
+		let distance: Material | undefined;
+		const renderer = harness(() => {
+			outline = (mesh.children[0] as Mesh).material as Material;
+			depth = mesh.customDepthMaterial;
+			distance = mesh.customDistanceMaterial;
+		});
+		const release = enableLilToon(renderer);
+		renderer.render(avatar, new PerspectiveCamera());
+		const disposals = [outline!, depth!, distance!].map((material) =>
+			vi.spyOn(material, "dispose"),
+		);
+		avatar.remove(mesh);
+		source.dispose();
+		mesh.geometry.dispose();
+		for (const disposal of disposals) expect(disposal).toHaveBeenCalledOnce();
+		release();
+		for (const disposal of disposals) expect(disposal).toHaveBeenCalledOnce();
 	});
 	it("syncs changed outline properties once and keeps unchanged pass state clean", () => {
 		const scene = new Scene();
@@ -280,7 +341,7 @@ describe("renderer-owned automatic passes", () => {
 		release();
 		release();
 	});
-	it("handles both directions of replacement, disabling outlines, and detached meshes", () => {
+	it("retains helpers through replacement and outline toggles until source disposal", () => {
 		const scene = new Scene(),
 			source = outlined(),
 			mesh = new Mesh(new BoxGeometry(), source);
@@ -295,21 +356,30 @@ describe("renderer-owned automatic passes", () => {
 		const release = enableLilToon(renderer);
 		const camera = new PerspectiveCamera();
 		renderer.render(scene, camera);
-		const dispose = vi.spyOn(oldOutline!, "dispose");
-		mesh.material = new MeshBasicMaterial() as unknown as LilToonMaterial;
+		const firstOutline = oldOutline!;
+		const dispose = vi.spyOn(firstOutline, "dispose");
+		const replacement = new MeshBasicMaterial();
+		mesh.material = replacement as unknown as LilToonMaterial;
 		expected = 0;
 		renderer.render(scene, camera);
-		expect(dispose).toHaveBeenCalledOnce();
+		expect(dispose).not.toHaveBeenCalled();
 		mesh.material = source;
 		expected = 1;
 		renderer.render(scene, camera);
+		expect(oldOutline).toBe(firstOutline);
 		source.setProperty("_UseOutline", 0);
 		expected = 0;
 		renderer.render(scene, camera);
 		source.setProperty("_UseOutline", 1);
 		scene.remove(mesh);
 		renderer.render(scene, camera);
+		expect(dispose).not.toHaveBeenCalled();
+		source.dispose();
+		expect(dispose).toHaveBeenCalledOnce();
 		release();
+		expect(dispose).toHaveBeenCalledOnce();
+		replacement.dispose();
+		mesh.geometry.dispose();
 	});
 	it("preserves grouped slots, skin/morph state, layers and scene callback edits", () => {
 		const scene = new Scene(),

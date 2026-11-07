@@ -67,7 +67,7 @@ export function LilToonRendering() {
 }
 ```
 
-Cached resources survive compositor fullscreen draws, override-material passes and hidden/culled meshes. Actual source removal/replacement is reconciled during rendering; material/geometry disposal and renderer release also free dependent resources. Temporary scene proxies and callbacks are restored after rendering, including failures. Input textures remain caller-owned.
+Cached resources survive compositor fullscreen draws, override-material passes and hidden/culled meshes. Automatic outline and shadow helpers remain until their source material is disposed or the renderer integration is released; callers disposing or replacing an avatar must dispose its source materials. Other renderer recipes reconcile their own source membership and assignment during rendering. Temporary scene proxies and callbacks are restored after rendering, including failures. Input textures remain caller-owned.
 
 Remove models from the scene and dispose their owned geometries, materials and textures when no longer needed. A renderer lease does not dispose application-owned assets. Shared assets need shared ownership accounting. VRM cleanup follows Three-VRM's lifecycle; uninstall custom expression bindings before disposing their materials.
 

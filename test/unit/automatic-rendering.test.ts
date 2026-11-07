@@ -125,24 +125,29 @@ describe("automatic material inputs", () => {
 		const b: Mesh = new Mesh(new BoxGeometry(), source);
 		scene.add(a, b);
 		const occluder = new MeshBasicMaterial({ color: 0x000000 });
-		const helpers: { outline: Material; depth: Material; distance: Material }[] = [];
+		const helpers: {
+			outline: Material;
+			depth: Material;
+			distance: Material;
+		}[] = [];
 		const renderer = harness((current) => {
 			if (current !== scene) return;
 			for (const mesh of [a, b]) {
 				const outline = (mesh.children[0] as Mesh | undefined)?.material;
-				if (outline) helpers.push({
-					outline: outline as Material,
-					depth: mesh.customDepthMaterial!,
-					distance: mesh.customDistanceMaterial!,
-				});
+				if (outline)
+					helpers.push({
+						outline: outline as Material,
+						depth: mesh.customDepthMaterial!,
+						distance: mesh.customDistanceMaterial!,
+					});
 			}
 		});
 		const release = enableLilToon(renderer);
 		const camera = new PerspectiveCamera();
 		renderer.render(scene, camera);
 		const first = helpers[0]!;
-		const disposals = [first.outline, first.depth, first.distance].map((material) =>
-			vi.spyOn(material, "dispose"),
+		const disposals = [first.outline, first.depth, first.distance].map(
+			(material) => vi.spyOn(material, "dispose"),
 		);
 		a.material = occluder;
 		b.material = occluder;

@@ -417,9 +417,11 @@ function prepareLilToonTextureViews(
 					material.prepareTextureViews(views);
 		});
 	if (views.size === 0) return;
-	const properties = (renderer as unknown as {
-		properties?: { get(value: object): { __version?: number } };
-	}).properties;
+	const properties = (
+		renderer as unknown as {
+			properties?: { get(value: object): { __version?: number } };
+		}
+	).properties;
 	if (!properties)
 		throw new Error("WebGLRenderer texture cache is unavailable.");
 	// A clone can advance a shared Source after the caller uploaded it. Only
@@ -428,7 +430,9 @@ function prepareLilToonTextureViews(
 		[...views]
 			.filter((view) => {
 				const cachedVersion = properties.get(view.source).__version;
-				return cachedVersion !== undefined && cachedVersion !== view.source.version;
+				return (
+					cachedVersion !== undefined && cachedVersion !== view.source.version
+				);
 			})
 			.map((view) => view.source),
 	);

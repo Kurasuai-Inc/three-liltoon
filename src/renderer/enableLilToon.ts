@@ -21,10 +21,8 @@ import { SceneColorPasses } from "./SceneColorPasses.js";
 import { FurPasses } from "./FurPasses.js";
 import { TransparencyPasses } from "./TransparencyPasses.js";
 import { applyLilToonPassState } from "../utils/renderState.js";
-import { ownsPassSource } from "./passOwnership.js";
 
 type Recipe = {
-	owners: Map<Mesh, Object3D>;
 	source: LilToonMaterial;
 	outline: LilToonMaterial;
 	depth: MeshDepthMaterial;
@@ -99,20 +97,7 @@ class AutomaticPasses {
 	private readonly recipes = new Map<LilToonMaterial, Recipe>();
 	private readonly proxies = new WeakMap<Mesh, Mesh>();
 	private readonly hidden = new MeshBasicMaterial({ visible: false });
-	private depth = 0;
-
-	begin() {
-		this.depth++;
-	}
-	end() {
-		if (--this.depth !== 0) return;
-		for (const [source, recipe] of this.recipes) {
-			for (const [mesh, root] of recipe.owners)
-				if (!ownsPassSource(root, mesh, source)) recipe.owners.delete(mesh);
-			if (!recipe.owners.size) recipe.release();
-		}
-	}
-	private recipe(source: LilToonMaterial, mesh: Mesh, scene: Object3D): Recipe {
+	private recipe(source: LilToonMaterial): Recipe {
 		let recipe = this.recipes.get(source);
 		if (!recipe) {
 			const outline = new LilToonMaterial({
@@ -132,7 +117,6 @@ class AutomaticPasses {
 			enableShadowAlphaMask(depth, shadowAlphaMask);
 			enableShadowAlphaMask(distance, shadowAlphaMask);
 			recipe = {
-				owners: new Map(),
 				source,
 				outline,
 				depth,
@@ -153,9 +137,11 @@ class AutomaticPasses {
 				},
 			};
 			this.recipes.set(source, recipe);
+			// A source can be absent from one render while the app temporarily swaps
+			// materials (for example selective bloom). Only source disposal or this
+			// renderer's explicit teardown ends the helper lifetime.
 			source.addEventListener("dispose", recipe.release);
 		}
-		recipe.owners.set(mesh, scene);
 		// Keep automatic outlines on the same explicit capture clock on every draw.
 		recipe.outline.renderTimeSeconds = source.renderTimeSeconds;
 		// Read mutable standard Color edits as well as original property setters.
@@ -230,7 +216,7 @@ class AutomaticPasses {
 					: [mesh.material];
 				const recipes = materials.map((material) =>
 					material instanceof LilToonMaterial && material.pass === "forward"
-						? this.recipe(material, mesh, scene)
+						? this.recipe(material)
 						: undefined,
 				);
 				const first = recipes.find((recipe) => recipe !== undefined);
@@ -499,7 +485,6 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		return () => restore.reverse().forEach((undo) => undo());
 	};
 	const wrapped: WebGLRenderer["render"] = function (scene, camera) {
-		passes.begin();
 		const previous = scene.onBeforeRender;
 		const original = originalHooks.get(previous) ?? previous;
 		let restore: (() => void) | undefined;
@@ -519,7 +504,6 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		} finally {
 			restore?.();
 			if (scene.onBeforeRender === hook) scene.onBeforeRender = previous;
-			passes.end();
 		}
 	};
 	const wrappedDispose = () => {
@@ -528,7 +512,6 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 	};
 	const installation: Installation = {
 		compile: async (scene, camera) => {
-			passes.begin();
 			let restore: (() => void) | undefined;
 			try {
 				restore = prepare(scene);
@@ -546,7 +529,6 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 				await Promise.all(programs);
 			} finally {
 				restore?.();
-				passes.end();
 			}
 		},
 		release: () => {

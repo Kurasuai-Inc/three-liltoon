@@ -121,8 +121,8 @@ describe("automatic material inputs", () => {
 	it("keeps one helper set and program identity across a temporary shared-material pass", () => {
 		const scene = new Scene();
 		const source = outlined();
-		const a = new Mesh(new BoxGeometry(), source);
-		const b = new Mesh(new BoxGeometry(), source);
+		const a: Mesh = new Mesh(new BoxGeometry(), source);
+		const b: Mesh = new Mesh(new BoxGeometry(), source);
 		scene.add(a, b);
 		const occluder = new MeshBasicMaterial({ color: 0x000000 });
 		const helpers: { outline: Material; depth: Material; distance: Material }[] = [];

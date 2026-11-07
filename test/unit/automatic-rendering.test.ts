@@ -336,7 +336,7 @@ describe("renderer-owned automatic passes", () => {
 		release();
 		release();
 	});
-	it("handles both directions of replacement, disabling outlines, and detached meshes", () => {
+	it("retains helpers through replacement and outline toggles until source disposal", () => {
 		const scene = new Scene(),
 			source = outlined(),
 			mesh = new Mesh(new BoxGeometry(), source);
@@ -351,21 +351,30 @@ describe("renderer-owned automatic passes", () => {
 		const release = enableLilToon(renderer);
 		const camera = new PerspectiveCamera();
 		renderer.render(scene, camera);
-		const dispose = vi.spyOn(oldOutline!, "dispose");
-		mesh.material = new MeshBasicMaterial() as unknown as LilToonMaterial;
+		const firstOutline = oldOutline!;
+		const dispose = vi.spyOn(firstOutline, "dispose");
+		const replacement = new MeshBasicMaterial();
+		mesh.material = replacement as unknown as LilToonMaterial;
 		expected = 0;
 		renderer.render(scene, camera);
-		expect(dispose).toHaveBeenCalledOnce();
+		expect(dispose).not.toHaveBeenCalled();
 		mesh.material = source;
 		expected = 1;
 		renderer.render(scene, camera);
+		expect(oldOutline).toBe(firstOutline);
 		source.setProperty("_UseOutline", 0);
 		expected = 0;
 		renderer.render(scene, camera);
 		source.setProperty("_UseOutline", 1);
 		scene.remove(mesh);
 		renderer.render(scene, camera);
+		expect(dispose).not.toHaveBeenCalled();
+		source.dispose();
+		expect(dispose).toHaveBeenCalledOnce();
 		release();
+		expect(dispose).toHaveBeenCalledOnce();
+		replacement.dispose();
+		mesh.geometry.dispose();
 	});
 	it("preserves grouped slots, skin/morph state, layers and scene callback edits", () => {
 		const scene = new Scene(),

@@ -12,6 +12,7 @@ import {
 } from "./types.js";
 import { warnLilToon } from "../utils/diagnostics.js";
 import type { LilToonWarning } from "../utils/materialWarnings.js";
+import { createTaskPace, type LilToonTaskPacing } from "../utils/taskPacing.js";
 import { ensureLilToonTangents } from "./LilToonTangentGenerator.js";
 import { CubeTextureReader } from "./cubeTextures.js";
 
@@ -24,6 +25,11 @@ export interface GLTFLilToonExtensionOptions {
 		property: string,
 		textureIndex?: number,
 	) => "srgb" | "linear" | undefined;
+	/**
+	 * Splits per-material property/shader preparation across task-queue turns
+	 * so loading a model does not block the main thread in one long task.
+	 */
+	pacing?: LilToonTaskPacing;
 }
 
 function renderModeFromDefinition(definition: GLTFLilToonMaterialDefinition) {
@@ -45,12 +51,14 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 	readonly name = LILTOON_GLTF_EXTENSION;
 	readonly #materialWarnings = new Map<number, LilToonWarning[]>();
 	readonly #cubes: CubeTextureReader;
+	readonly #pace: () => Promise<void>;
 
 	constructor(
 		readonly parser: GLTFParser,
 		readonly options: GLTFLilToonExtensionOptions = {},
 	) {
 		this.#cubes = new CubeTextureReader(parser);
+		this.#pace = createTaskPace(options.pacing);
 	}
 
 	loadMaterial(materialIndex: number): Promise<Material> | null {
@@ -95,6 +103,9 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 					},
 				),
 			);
+			// Material construction (property bags, shader-source preparation) is the
+			// synchronous unit; pace() spreads consecutive materials across tasks.
+			await this.#pace();
 			const material = new LilToonMaterial({
 				name: materialDefinition.name,
 				renderMode: renderModeFromDefinition(definition),

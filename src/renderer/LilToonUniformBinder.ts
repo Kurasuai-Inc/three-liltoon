@@ -10,24 +10,11 @@ import {
 } from "three";
 import { LILTOON_DEFAULTS } from "../generated/defaults.js";
 import type { LilToonScalarOrVector } from "../material/LilToonMaterialParameters.js";
+import { analyzeShaderSource } from "../shader/shaderAnalysis.js";
 
 type UniformPrimitive =
 	number | Matrix4 | Vector2 | Vector3 | Vector4 | UniformPrimitive[];
 export type LilToonGlobalUniforms = Record<string, UniformPrimitive>;
-
-function parseGlobalTypes(...shaders: string[]): Map<string, string> {
-	const result = new Map<string, string>();
-	for (const shader of shaders) {
-		const body = /struct\s+type_Globals\s*\{([\s\S]*?)\};/.exec(shader)?.[1];
-		if (!body) continue;
-		for (const match of body.matchAll(
-			/(?:lowp\s+|mediump\s+|highp\s+)?(mat4|vec4|vec3|vec2|float|uint|int)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)\])?\s*;/g,
-		)) {
-			result.set(match[2]!, `${match[1]}${match[3] ? `[${match[3]}]` : ""}`);
-		}
-	}
-	return result;
-}
 
 function initialValue(type: string): UniformPrimitive {
 	const array = /^(.*)\[(\d+)\]$/.exec(type);
@@ -77,8 +64,9 @@ export function createGlobalUniforms(
 	fragmentShader: string,
 ): LilToonGlobalUniforms {
 	const globals: LilToonGlobalUniforms = {};
-	for (const [name, type] of parseGlobalTypes(vertexShader, fragmentShader))
-		globals[name] = initialValue(type);
+	for (const shader of [vertexShader, fragmentShader])
+		for (const [name, type] of analyzeShaderSource(shader).globalTypes)
+			globals[name] = initialValue(type);
 	for (const [name, value] of Object.entries(LILTOON_DEFAULTS)) {
 		if (
 			!(name in globals) ||

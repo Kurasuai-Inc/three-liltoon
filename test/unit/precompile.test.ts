@@ -22,7 +22,13 @@ vi.mock("../../src/shader/ShaderProgramLibrary.js", () => {
 			? new Map([["u_MainTex", "_MainTex"]])
 			: new Map(),
 		resources: textures?._MainTex
-			? [{ property: "_MainTex", uniform: "u_MainTex", sampler: "lil_sampler_linear" }]
+			? [
+					{
+						property: "_MainTex",
+						uniform: "u_MainTex",
+						sampler: "lil_sampler_linear",
+					},
+				]
 			: [],
 	});
 	return {
@@ -100,7 +106,12 @@ describe("compileLilToonAsync", () => {
 		let renderer: WebGLRenderer;
 		renderer = makeRenderer((current, activeCamera) => {
 			material.onBeforeRender(
-				renderer, current, activeCamera, mesh.geometry, mesh, new Group(),
+				renderer,
+				current,
+				activeCamera,
+				mesh.geometry,
+				mesh,
+				new Group(),
 			);
 		});
 		const cached = { __version: source.source.version };
@@ -348,6 +359,33 @@ describe("compileLilToonAsync", () => {
 		material.dispose();
 		geometryWithOneMorph.dispose();
 		geometryWithTwoMorphs.dispose();
+	});
+
+	it("paces pass preparation through the injected yieldControl", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			material = new LilToonMaterial(),
+			first = new Mesh(new BoxGeometry(), material),
+			second = new Mesh(new BoxGeometry(), material);
+		scene.add(first, second);
+		const renderer = makeRenderer(() => {});
+		(
+			renderer as unknown as { compileAsync: (target: Scene) => Promise<Scene> }
+		).compileAsync = vi.fn(async (target: Scene) => target);
+		const release = enableLilToon(renderer);
+		const yieldControl = vi.fn(() => Promise.resolve());
+
+		await compileLilToonAsync(renderer, scene, camera, {
+			budgetMs: 0,
+			yieldControl,
+		});
+		// Two forward meshes in prepareAsync; neither produces auxiliary scenes.
+		expect(yieldControl).toHaveBeenCalledTimes(4);
+
+		release();
+		material.dispose();
+		first.geometry.dispose();
+		second.geometry.dispose();
 	});
 
 	it("requires the renderer pass installation", () => {

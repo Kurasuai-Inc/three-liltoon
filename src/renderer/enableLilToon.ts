@@ -21,6 +21,7 @@ import { SceneColorPasses } from "./SceneColorPasses.js";
 import { FurPasses } from "./FurPasses.js";
 import { TransparencyPasses } from "./TransparencyPasses.js";
 import { applyLilToonPassState } from "../utils/renderState.js";
+import { createTaskPace, type LilToonTaskPacing } from "../utils/taskPacing.js";
 
 type Recipe = {
 	source: LilToonMaterial;
@@ -202,6 +203,136 @@ class AutomaticPasses {
 		}
 		return recipe;
 	}
+	private prepareMesh(mesh: Mesh, undo: (() => void)[]): void {
+		const materials = Array.isArray(mesh.material)
+			? mesh.material
+			: [mesh.material];
+		const recipes = materials.map((material) =>
+			material instanceof LilToonMaterial && material.pass === "forward"
+				? this.recipe(material)
+				: undefined,
+		);
+		const first = recipes.find((recipe) => recipe !== undefined);
+		if (!first) return;
+		const outlines = recipes.map((recipe) =>
+			recipe &&
+			recipe.source.renderMode !== "transparent" &&
+			isLilToonOutlineEnabled(
+				recipe.source.lilToonProperties,
+				recipe.source.shaderVariant,
+			) &&
+			Number(recipe.source.lilToonProperties._OutlineWidth ?? 0) > 0
+				? recipe.outline
+				: this.hidden,
+		);
+		// Legacy manually attached outlines are honored without generating a duplicate.
+		const manualOutline = mesh.children.some(
+			(child) =>
+				!helpers.has(child) &&
+				(child as Mesh).isMesh &&
+				((child as Mesh).material as LilToonMaterial)?.pass === "outline",
+		);
+		if (
+			!manualOutline &&
+			outlines.some((material) => material !== this.hidden)
+		) {
+			let proxy = this.proxies.get(mesh);
+			if (!proxy) {
+				proxy = (mesh as SkinnedMesh).isSkinnedMesh
+					? new SkinnedMesh(mesh.geometry, first.outline)
+					: new Mesh(mesh.geometry, first.outline);
+				proxy.name = `${mesh.name}:lilToon-outline`;
+				proxy.matrixAutoUpdate = false;
+				proxy.raycast = () => {};
+				helpers.add(proxy);
+				this.proxies.set(mesh, proxy);
+			}
+			proxy.geometry = mesh.geometry;
+			proxy.material = Array.isArray(mesh.material) ? outlines : outlines[0]!;
+			proxy.visible = mesh.visible;
+			proxy.layers.mask = mesh.layers.mask;
+			proxy.frustumCulled = mesh.frustumCulled;
+			proxy.renderOrder = mesh.renderOrder - 1;
+			proxy.morphTargetDictionary = mesh.morphTargetDictionary;
+			proxy.morphTargetInfluences = mesh.morphTargetInfluences;
+			if ((proxy as SkinnedMesh).isSkinnedMesh) {
+				const skin = proxy as SkinnedMesh,
+					source = mesh as SkinnedMesh;
+				skin.skeleton = source.skeleton;
+				skin.bindMode = source.bindMode;
+				skin.bindMatrix.copy(source.bindMatrix);
+				skin.bindMatrixInverse.copy(source.bindMatrixInverse);
+				skin.boundingBox = source.boundingBox;
+				skin.boundingSphere = source.boundingSphere;
+			}
+			const priorParent = proxy.parent;
+			mesh.add(proxy);
+			undo.push(() => {
+				proxy!.removeFromParent();
+				priorParent?.add(proxy!);
+			});
+		}
+		const depth = mesh.customDepthMaterial,
+			distance = mesh.customDistanceMaterial;
+		// Authored custom casters are authoritative. Defaults are installed temporarily.
+		if (!depth) mesh.customDepthMaterial = first.depth;
+		if (!distance) mesh.customDistanceMaterial = first.distance;
+		const before = mesh.onBeforeShadow;
+		const hook: Mesh["onBeforeShadow"] = (...args) => {
+			const material = args[5] as MeshDepthMaterial | MeshDistanceMaterial;
+			const recipe =
+				recipes[
+					(args[6] as { materialIndex?: number } | null)?.materialIndex ?? 0
+				];
+			if (recipe && (material === first.depth || material === first.distance)) {
+				if (!!material.map !== !!recipe.map) material.needsUpdate = true;
+				material.map = recipe.map;
+				material.alphaMap = null;
+				material.alphaTest = recipe.source.alphaTest;
+				material.opacity = recipe.source.opacity;
+				const alphaMaskMode = Number(
+					recipe.source.getProperty("_AlphaMaskMode") ?? 0,
+				);
+				const alphaMask = recipe.source.lilToonTextures._AlphaMask ?? null;
+				if (alphaMaskMode !== 0 && !alphaMask)
+					throw new Error(
+						"An enabled lilToon shadow alpha mask requires _AlphaMask texture data.",
+					);
+				if (alphaMaskMode !== 0 && !recipe.map)
+					throw new Error(
+						"lilToon shadow alpha masks require the source main texture UV transform.",
+					);
+				// Bind a valid texture even while the mode is disabled: the shadow shader
+				// keeps its sampler declaration whenever Three enables USE_MAP.
+				recipe.shadowAlphaMask.map.value =
+					alphaMaskMode === 0 ? recipe.map : alphaMask;
+				recipe.shadowAlphaMask.mode.value = alphaMaskMode;
+				recipe.shadowAlphaMask.scale.value = Number(
+					recipe.source.getProperty("_AlphaMaskScale") ?? 1,
+				);
+				recipe.shadowAlphaMask.value.value = Number(
+					recipe.source.getProperty("_AlphaMaskValue") ?? 0,
+				);
+			} else if (
+				!recipe &&
+				(material === first.depth || material === first.distance)
+			) {
+				material.opacity =
+					materials[
+						(args[6] as { materialIndex?: number } | null)?.materialIndex ?? 0
+					]?.opacity ?? 1;
+			}
+			before.apply(mesh, args);
+		};
+		mesh.onBeforeShadow = hook;
+		undo.push(() => {
+			if (mesh.customDepthMaterial === first.depth)
+				mesh.customDepthMaterial = depth;
+			if (mesh.customDistanceMaterial === first.distance)
+				mesh.customDistanceMaterial = distance;
+			if (mesh.onBeforeShadow === hook) mesh.onBeforeShadow = before;
+		});
+	}
 	prepare(scene: Object3D): () => void {
 		const undo: (() => void)[] = [];
 		const meshes: Mesh[] = [];
@@ -210,143 +341,31 @@ class AutomaticPasses {
 				meshes.push(node as Mesh);
 		});
 		try {
-			for (const mesh of meshes) {
-				const materials = Array.isArray(mesh.material)
-					? mesh.material
-					: [mesh.material];
-				const recipes = materials.map((material) =>
-					material instanceof LilToonMaterial && material.pass === "forward"
-						? this.recipe(material)
-						: undefined,
-				);
-				const first = recipes.find((recipe) => recipe !== undefined);
-				if (!first) continue;
-				const outlines = recipes.map((recipe) =>
-					recipe &&
-					recipe.source.renderMode !== "transparent" &&
-					isLilToonOutlineEnabled(
-						recipe.source.lilToonProperties,
-						recipe.source.shaderVariant,
-					) &&
-					Number(recipe.source.lilToonProperties._OutlineWidth ?? 0) > 0
-						? recipe.outline
-						: this.hidden,
-				);
-				// Legacy manually attached outlines are honored without generating a duplicate.
-				const manualOutline = mesh.children.some(
-					(child) =>
-						!helpers.has(child) &&
-						(child as Mesh).isMesh &&
-						((child as Mesh).material as LilToonMaterial)?.pass === "outline",
-				);
-				if (
-					!manualOutline &&
-					outlines.some((material) => material !== this.hidden)
-				) {
-					let proxy = this.proxies.get(mesh);
-					if (!proxy) {
-						proxy = (mesh as SkinnedMesh).isSkinnedMesh
-							? new SkinnedMesh(mesh.geometry, first.outline)
-							: new Mesh(mesh.geometry, first.outline);
-						proxy.name = `${mesh.name}:lilToon-outline`;
-						proxy.matrixAutoUpdate = false;
-						proxy.raycast = () => {};
-						helpers.add(proxy);
-						this.proxies.set(mesh, proxy);
-					}
-					proxy.geometry = mesh.geometry;
-					proxy.material = Array.isArray(mesh.material)
-						? outlines
-						: outlines[0]!;
-					proxy.visible = mesh.visible;
-					proxy.layers.mask = mesh.layers.mask;
-					proxy.frustumCulled = mesh.frustumCulled;
-					proxy.renderOrder = mesh.renderOrder - 1;
-					proxy.morphTargetDictionary = mesh.morphTargetDictionary;
-					proxy.morphTargetInfluences = mesh.morphTargetInfluences;
-					if ((proxy as SkinnedMesh).isSkinnedMesh) {
-						const skin = proxy as SkinnedMesh,
-							source = mesh as SkinnedMesh;
-						skin.skeleton = source.skeleton;
-						skin.bindMode = source.bindMode;
-						skin.bindMatrix.copy(source.bindMatrix);
-						skin.bindMatrixInverse.copy(source.bindMatrixInverse);
-						skin.boundingBox = source.boundingBox;
-						skin.boundingSphere = source.boundingSphere;
-					}
-					const priorParent = proxy.parent;
-					mesh.add(proxy);
-					undo.push(() => {
-						proxy!.removeFromParent();
-						priorParent?.add(proxy!);
-					});
-				}
-				const depth = mesh.customDepthMaterial,
-					distance = mesh.customDistanceMaterial;
-				// Authored custom casters are authoritative. Defaults are installed temporarily.
-				if (!depth) mesh.customDepthMaterial = first.depth;
-				if (!distance) mesh.customDistanceMaterial = first.distance;
-				const before = mesh.onBeforeShadow;
-				const hook: Mesh["onBeforeShadow"] = (...args) => {
-					const material = args[5] as MeshDepthMaterial | MeshDistanceMaterial;
-					const recipe =
-						recipes[
-							(args[6] as { materialIndex?: number } | null)?.materialIndex ?? 0
-						];
-					if (
-						recipe &&
-						(material === first.depth || material === first.distance)
-					) {
-						if (!!material.map !== !!recipe.map) material.needsUpdate = true;
-						material.map = recipe.map;
-						material.alphaMap = null;
-						material.alphaTest = recipe.source.alphaTest;
-						material.opacity = recipe.source.opacity;
-						const alphaMaskMode = Number(
-							recipe.source.getProperty("_AlphaMaskMode") ?? 0,
-						);
-						const alphaMask = recipe.source.lilToonTextures._AlphaMask ?? null;
-						if (alphaMaskMode !== 0 && !alphaMask)
-							throw new Error(
-								"An enabled lilToon shadow alpha mask requires _AlphaMask texture data.",
-							);
-						if (alphaMaskMode !== 0 && !recipe.map)
-							throw new Error(
-								"lilToon shadow alpha masks require the source main texture UV transform.",
-							);
-						// Bind a valid texture even while the mode is disabled: the shadow shader
-						// keeps its sampler declaration whenever Three enables USE_MAP.
-						recipe.shadowAlphaMask.map.value =
-							alphaMaskMode === 0 ? recipe.map : alphaMask;
-						recipe.shadowAlphaMask.mode.value = alphaMaskMode;
-						recipe.shadowAlphaMask.scale.value = Number(
-							recipe.source.getProperty("_AlphaMaskScale") ?? 1,
-						);
-						recipe.shadowAlphaMask.value.value = Number(
-							recipe.source.getProperty("_AlphaMaskValue") ?? 0,
-						);
-					} else if (
-						!recipe &&
-						(material === first.depth || material === first.distance)
-					) {
-						material.opacity =
-							materials[
-								(args[6] as { materialIndex?: number } | null)?.materialIndex ??
-									0
-							]?.opacity ?? 1;
-					}
-					before.apply(mesh, args);
-				};
-				mesh.onBeforeShadow = hook;
-				undo.push(() => {
-					if (mesh.customDepthMaterial === first.depth)
-						mesh.customDepthMaterial = depth;
-					if (mesh.customDistanceMaterial === first.distance)
-						mesh.customDistanceMaterial = distance;
-					if (mesh.onBeforeShadow === hook) mesh.onBeforeShadow = before;
-				});
-			}
+			for (const mesh of meshes) this.prepareMesh(mesh, undo);
 			// Scene callbacks may have moved or inserted objects after Three's initial matrix update.
+			scene.updateMatrixWorld();
+		} catch (error) {
+			undo.reverse().forEach((restore) => restore());
+			throw error;
+		}
+		return () => undo.reverse().forEach((restore) => restore());
+	}
+	/** Same pass installation as prepare(), paced across tasks between meshes. */
+	async prepareAsync(
+		scene: Object3D,
+		pace: () => Promise<void>,
+	): Promise<() => void> {
+		const undo: (() => void)[] = [];
+		const meshes: Mesh[] = [];
+		scene.traverse((node) => {
+			if ((node as Mesh).isMesh && !helpers.has(node))
+				meshes.push(node as Mesh);
+		});
+		try {
+			for (const mesh of meshes) {
+				this.prepareMesh(mesh, undo);
+				await pace();
+			}
 			scene.updateMatrixWorld();
 		} catch (error) {
 			undo.reverse().forEach((restore) => restore());
@@ -363,7 +382,11 @@ class AutomaticPasses {
 type Installation = {
 	release(): void;
 	acquire(): () => void;
-	compile(scene: Object3D, camera: Camera): Promise<void>;
+	compile(
+		scene: Object3D,
+		camera: Camera,
+		pacing?: LilToonTaskPacing,
+	): Promise<void>;
 };
 const installations = new WeakMap<WebGLRenderer, Installation>();
 
@@ -454,13 +477,14 @@ export function compileLilToonAsync(
 	renderer: WebGLRenderer,
 	scene: Object3D,
 	camera: Camera,
+	pacing?: LilToonTaskPacing,
 ): Promise<void> {
 	const installation = installations.get(renderer);
 	if (!installation)
 		throw new Error(
 			"Call enableLilToon(renderer) before compiling lilToon materials.",
 		);
-	return installation.compile(scene, camera);
+	return installation.compile(scene, camera, pacing);
 }
 
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
@@ -515,13 +539,29 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		dispose.call(renderer);
 	};
 	const installation: Installation = {
-		compile: async (scene, camera) => {
+		compile: async (scene, camera, pacing) => {
+			// Recipe construction is the synchronous unit; pace() yields between
+			// meshes so precompilation does not stall the main thread in one task.
+			const pace = createTaskPace(pacing);
 			let restore: (() => void) | undefined;
 			try {
-				restore = prepare(scene);
+				const restores: (() => void)[] = [];
+				try {
+					restores.push(await passes.prepareAsync(scene, pace));
+					restores.push(sceneColors.prepare(renderer, scene, render));
+					restores.push(fur.prepare(renderer, scene, render));
+					restores.push(transparency.prepare(renderer, scene, render));
+				} catch (error) {
+					restores.reverse().forEach((undo) => undo());
+					throw error;
+				}
+				restore = () => restores.reverse().forEach((undo) => undo());
 				// The auxiliary draw renders in separate unlit scenes. Compiling its proxy
 				// in the main scene creates a different light-dependent program key.
-				const auxiliaryScenes = transparency.prepareForCompile(scene);
+				const auxiliaryScenes = await transparency.prepareForCompile(
+					scene,
+					pace,
+				);
 				const programs = [
 					compileLilToonPrograms(renderer, scene, camera),
 					...auxiliaryScenes.map((auxiliary) =>

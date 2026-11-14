@@ -7,6 +7,8 @@ import {
 	RGBADepthPacking,
 	SkinnedMesh,
 	type Camera,
+	type Material,
+	type Scene,
 	type WebGLRenderer,
 	type Object3D,
 	type Texture,
@@ -379,48 +381,156 @@ class AutomaticPasses {
 	}
 }
 
+/**
+ * A paced lilToon program compile in progress. Create one with
+ * {@link createLilToonProgramCompileSession}, then drive one GL program
+ * submission per {@link submitNext} call so callers can give each program its
+ * own task instead of compiling an entire scene in one synchronous sweep.
+ */
+export interface LilToonProgramCompileSession {
+	/** Renderable units whose programs have not been submitted yet. */
+	readonly pending: number;
+	/** True once every unit has been submitted to the GL. */
+	readonly submitted: boolean;
+	/**
+	 * Submit the next unit's program. Returns false once nothing is left, so
+	 * `while (session.submitNext())` drains the session. Each call issues at
+	 * most one material's compile/link for a single renderable.
+	 */
+	submitNext(): boolean;
+	/**
+	 * Submit the texture uploads for the session's scenes. Call this while
+	 * async program compilation is still in flight. Idempotent.
+	 */
+	prepareTextures(): void;
+	/**
+	 * Resolve once every submitted program reports ready through
+	 * KHR_parallel_shader_compile (or immediately when the extension is
+	 * unavailable, matching WebGLRenderer.compileAsync()).
+	 */
+	settle(): Promise<void>;
+	/** Undo the pass hooks installed while compiling. Idempotent. */
+	release(): void;
+}
+
 type Installation = {
 	release(): void;
 	acquire(): () => void;
-	compile(
+	createSession(
 		scene: Object3D,
 		camera: Camera,
 		pacing?: LilToonTaskPacing,
-	): Promise<void>;
+	): Promise<LilToonProgramCompileSession>;
 };
 const installations = new WeakMap<WebGLRenderer, Installation>();
 
-function compileLilToonPrograms(
-	renderer: WebGLRenderer,
-	scene: Object3D,
-	camera: Camera,
-): Promise<void> {
-	const traverse = scene.traverse;
-	const traverseVisible = scene.traverseVisible;
-	// WebGLRenderer.compile() derives a program for each renderable while
-	// traversing, but does not invoke material.onBeforeRender(). Intercept that
-	// traversal briefly so each geometry contributes the same morph defines as
-	// its first draw, including when one material is shared by several meshes.
-	scene.traverse = function (callback) {
-		return traverseVisible.call(this, (object) => {
-			const mesh = object as Mesh;
-			if (mesh.isMesh) {
-				const materials = Array.isArray(mesh.material)
-					? mesh.material
-					: [mesh.material];
-				for (const material of materials)
-					if (material instanceof LilToonMaterial)
-						prepareLilToonMaterialProgram(material, mesh.geometry);
-			}
-			callback(object);
+type RenderableObject = Object3D & {
+	isMesh?: boolean;
+	isPoints?: boolean;
+	isLine?: boolean;
+	isSprite?: boolean;
+	material?: Material | Material[];
+};
+
+type CompileUnit = {
+	// Programs depend on the target scene's light state, so every unit keeps
+	// the scene it was enumerated from as its compile target.
+	readonly targetScene: Object3D;
+	readonly object: RenderableObject;
+	readonly material: Material;
+};
+
+// The compile sweep previously visited only visible renderables (the wrapped
+// traverse delegated to traverseVisible); enumerate the same set so the paced
+// driver submits every program the unbroken sweep would have submitted — and
+// no more.
+function collectCompileUnits(roots: readonly Object3D[]): CompileUnit[] {
+	const units: CompileUnit[] = [];
+	for (const targetScene of roots)
+		targetScene.traverseVisible((object) => {
+			const renderable = object as RenderableObject;
+			if (
+				!(
+					renderable.isMesh ||
+					renderable.isPoints ||
+					renderable.isLine ||
+					renderable.isSprite
+				) ||
+				renderable.material === undefined ||
+				renderable.material === null
+			)
+				return;
+			const materials = Array.isArray(renderable.material)
+				? renderable.material
+				: [renderable.material];
+			for (const material of materials)
+				units.push({ targetScene, object: renderable, material });
 		});
-	};
-	try {
-		// compileAsync() calls compile() synchronously before returning its promise.
-		return renderer.compileAsync(scene, camera).then(() => {});
-	} finally {
-		scene.traverse = traverse;
+	return units;
+}
+
+function submitCompileUnit(
+	renderer: WebGLRenderer,
+	camera: Camera,
+	unit: CompileUnit,
+): Promise<Object3D> {
+	// WebGLRenderer.compile() does not invoke material.onBeforeRender(). Morph
+	// target defines normally arrive there, so set them for each geometry
+	// before Three derives that mesh's WebGL program cache key.
+	if (unit.object.isMesh && unit.material instanceof LilToonMaterial)
+		prepareLilToonMaterialProgram(
+			unit.material,
+			(unit.object as Mesh).geometry,
+		);
+	// compile() submits a program for every material of each traversed object.
+	// Present a view carrying only this unit's material so one submitNext()
+	// issues exactly one program's GL compile/link, even on multi-material
+	// meshes. Property reads fall through to the real object.
+	let view: RenderableObject = unit.object;
+	if (Array.isArray(unit.object.material)) {
+		view = Object.create(unit.object) as RenderableObject;
+		view.material = unit.material;
 	}
+	// compile() traverses the "new" scene for renderables and the target scene
+	// for lights. A traverse shim yields this unit alone; light gathering on
+	// the shim is a no-op because its only object is not a light. compileAsync
+	// additionally returns this unit's KHR_parallel_shader_compile wait, which
+	// the session collects for settle().
+	const scope = {
+		traverse(callback: (object: Object3D) => void) {
+			callback(view);
+		},
+		traverseVisible() {},
+	};
+	return renderer.compileAsync(
+		scope as unknown as Object3D,
+		camera,
+		unit.targetScene as Scene,
+	);
+}
+
+function waitForSubmittedCompiles(
+	isExhausted: () => boolean,
+	compiles: readonly Promise<void>[],
+): Promise<void> {
+	// Settle may be invoked while units are still being submitted, so drain the
+	// live list until every submitted compileAsync wait has resolved.
+	return new Promise((resolve, reject) => {
+		let awaited = 0;
+		const check = async () => {
+			try {
+				while (awaited < compiles.length) await compiles[awaited++];
+				if (isExhausted() && awaited === compiles.length) {
+					resolve();
+					return;
+				}
+				setTimeout(check, 10);
+			} catch (error) {
+				reject(error);
+			}
+		};
+		check();
+	});
 }
 
 function prepareLilToonTextureViews(
@@ -484,7 +594,39 @@ export function compileLilToonAsync(
 		throw new Error(
 			"Call enableLilToon(renderer) before compiling lilToon materials.",
 		);
-	return installation.compile(scene, camera, pacing);
+	return installation
+		.createSession(scene, camera, pacing)
+		.then(async (session) => {
+			try {
+				while (session.submitNext()) {
+					// One GL program submission per iteration.
+				}
+				session.prepareTextures();
+				await session.settle();
+			} finally {
+				session.release();
+			}
+		});
+}
+
+/**
+ * Start a lilToon program compile that submits one program per
+ * {@link LilToonProgramCompileSession.submitNext} call, so a caller can spread
+ * the GL submissions across tasks instead of running the full scene's
+ * compile/link sweep inside one synchronous block.
+ */
+export function createLilToonProgramCompileSession(
+	renderer: WebGLRenderer,
+	scene: Object3D,
+	camera: Camera,
+	pacing?: LilToonTaskPacing,
+): Promise<LilToonProgramCompileSession> {
+	const installation = installations.get(renderer);
+	if (!installation)
+		throw new Error(
+			"Call enableLilToon(renderer) before compiling lilToon materials.",
+		);
+	return installation.createSession(scene, camera, pacing);
 }
 
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
@@ -539,40 +681,86 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		dispose.call(renderer);
 	};
 	const installation: Installation = {
-		compile: async (scene, camera, pacing) => {
+		createSession: async (scene, camera, pacing) => {
 			// Recipe construction is the synchronous unit; pace() yields between
 			// meshes so precompilation does not stall the main thread in one task.
 			const pace = createTaskPace(pacing);
-			let restore: (() => void) | undefined;
+			const restores: (() => void)[] = [];
+			let released = false;
+			const release = () => {
+				if (released) return;
+				released = true;
+				restores.reverse().forEach((undo) => undo());
+			};
 			try {
-				const restores: (() => void)[] = [];
-				try {
-					restores.push(await passes.prepareAsync(scene, pace));
-					restores.push(sceneColors.prepare(renderer, scene, render));
-					restores.push(fur.prepare(renderer, scene, render));
-					restores.push(transparency.prepare(renderer, scene, render));
-				} catch (error) {
-					restores.reverse().forEach((undo) => undo());
-					throw error;
-				}
-				restore = () => restores.reverse().forEach((undo) => undo());
-				// The auxiliary draw renders in separate unlit scenes. Compiling its proxy
-				// in the main scene creates a different light-dependent program key.
+				restores.push(await passes.prepareAsync(scene, pace));
+				restores.push(sceneColors.prepare(renderer, scene, render));
+				restores.push(fur.prepare(renderer, scene, render));
+				restores.push(transparency.prepare(renderer, scene, render));
+			} catch (error) {
+				release();
+				throw error;
+			}
+			// The auxiliary draw renders in separate unlit scenes. Compiling its proxy
+			// in the main scene creates a different light-dependent program key.
+			try {
 				const auxiliaryScenes = await transparency.prepareForCompile(
 					scene,
 					pace,
 				);
-				const programs = [
-					compileLilToonPrograms(renderer, scene, camera),
-					...auxiliaryScenes.map((auxiliary) =>
-						compileLilToonPrograms(renderer, auxiliary, camera),
-					),
-				];
-				// Submit texture uploads while async shader compilation is pending.
-				prepareLilToonTextureViews(renderer, [scene, ...auxiliaryScenes]);
-				await Promise.all(programs);
-			} finally {
-				restore?.();
+				const roots = [scene, ...auxiliaryScenes];
+				const units = collectCompileUnits(roots);
+				const compiles: Promise<void>[] = [];
+				let next = 0;
+				let texturesPrepared = false;
+				return {
+					get pending() {
+						return units.length - next;
+					},
+					get submitted() {
+						return next >= units.length;
+					},
+					submitNext() {
+						if (released)
+							throw new Error(
+								"LilToonProgramCompileSession was already released.",
+							);
+						const unit = units[next];
+						if (unit === undefined) return false;
+						next++;
+						const compile = submitCompileUnit(renderer, camera, unit).then(
+							() => {},
+						);
+						// Rejections surface through settle(); suppress the unhandled-
+						// rejection warning for callers that never wait on it.
+						compile.catch(() => {});
+						compiles.push(compile);
+						return true;
+					},
+					prepareTextures() {
+						if (released)
+							throw new Error(
+								"LilToonProgramCompileSession was already released.",
+							);
+						if (texturesPrepared) return;
+						texturesPrepared = true;
+						prepareLilToonTextureViews(renderer, roots);
+					},
+					settle() {
+						if (released)
+							throw new Error(
+								"LilToonProgramCompileSession was already released.",
+							);
+						return waitForSubmittedCompiles(
+							() => next >= units.length,
+							compiles,
+						);
+					},
+					release,
+				};
+			} catch (error) {
+				release();
+				throw error;
 			}
 		},
 		release: () => {

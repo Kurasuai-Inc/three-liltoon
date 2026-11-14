@@ -5,6 +5,7 @@ import {
 	Float32BufferAttribute,
 	Group,
 	Mesh,
+	Object3D,
 	PerspectiveCamera,
 	Scene,
 	Texture,
@@ -48,6 +49,7 @@ vi.mock("../../src/shader/ShaderProgramLibrary.js", () => {
 
 import {
 	compileLilToonAsync,
+	createLilToonProgramCompileSession,
 	enableLilToon,
 	LilToonMaterial,
 } from "../../src/index.js";
@@ -191,14 +193,20 @@ describe("compileLilToonAsync", () => {
 				);
 			});
 		});
-		const compileAsync = vi.fn(async (target: Scene) => {
-			target.traverse((object) => {
-				const drawable = object as Mesh;
-				if (drawable.isMesh && drawable.material instanceof LilToonMaterial)
-					compiledKeys.push(programSignature(drawable.material));
-			});
-			return target;
-		});
+		const compileAsync = vi.fn(
+			async (
+				target: Scene,
+				_camera: PerspectiveCamera,
+				_targetScene?: Scene,
+			) => {
+				target.traverse((object) => {
+					const drawable = object as Mesh;
+					if (drawable.isMesh && drawable.material instanceof LilToonMaterial)
+						compiledKeys.push(programSignature(drawable.material));
+				});
+				return target;
+			},
+		);
 		(
 			renderer as unknown as { compileAsync: typeof compileAsync }
 		).compileAsync = compileAsync;
@@ -206,10 +214,10 @@ describe("compileLilToonAsync", () => {
 
 		await compileLilToonAsync(renderer, scene, camera);
 		expect(compileAsync).toHaveBeenCalledTimes(3);
-		expect(compileAsync.mock.calls[0]![0]).toBe(scene);
-		for (const [auxiliaryScene] of compileAsync.mock.calls.slice(1))
+		expect(compileAsync.mock.calls[0]![2]).toBe(scene);
+		for (const call of compileAsync.mock.calls.slice(1))
 			expect(
-				auxiliaryScene.children.some(
+				(call[2] as Scene).children.some(
 					(child) => (child as AmbientLight).isLight,
 				),
 			).toBe(false);
@@ -255,25 +263,33 @@ describe("compileLilToonAsync", () => {
 				}
 			});
 		});
-		const compileAsync = vi.fn(async (target: Scene) => {
-			target.traverse((object) => {
-				const drawable = object as Mesh;
-				if (!drawable.isMesh) return;
-				const materials = Array.isArray(drawable.material)
-					? drawable.material
-					: [drawable.material];
-				for (const currentMaterial of materials)
-					if (currentMaterial instanceof LilToonMaterial)
-						compiledKeys.push(currentMaterial.shaderKey);
-			});
-			return target;
-		});
+		const compileAsync = vi.fn(
+			async (
+				target: Scene,
+				_camera: PerspectiveCamera,
+				_targetScene?: Scene,
+			) => {
+				target.traverse((object) => {
+					const drawable = object as Mesh;
+					if (!drawable.isMesh) return;
+					const materials = Array.isArray(drawable.material)
+						? drawable.material
+						: [drawable.material];
+					for (const currentMaterial of materials)
+						if (currentMaterial instanceof LilToonMaterial)
+							compiledKeys.push(currentMaterial.shaderKey);
+				});
+				return target;
+			},
+		);
 		(
 			renderer as unknown as { compileAsync: typeof compileAsync }
 		).compileAsync = compileAsync;
 		const release = enableLilToon(renderer);
 		await compileLilToonAsync(renderer, scene, camera);
-		expect(compileAsync).toHaveBeenCalledOnce();
+		// One compileAsync call per renderable unit: the forward mesh and the
+		// outline helper.
+		expect(compileAsync).toHaveBeenCalledTimes(2);
 		expect(compiledKeys).toHaveLength(2);
 		expect(new Set(compiledKeys)).toEqual(
 			new Set(["forward:opaque", "outline:opaque"]),
@@ -331,19 +347,25 @@ describe("compileLilToonAsync", () => {
 				}
 			});
 		});
-		const compileAsync = vi.fn(async (target: Scene) => {
-			target.traverse((object) => {
-				const mesh = object as Mesh;
-				if (!mesh.isMesh) return;
-				const materials = Array.isArray(mesh.material)
-					? mesh.material
-					: [mesh.material];
-				for (const currentMaterial of materials)
-					if (currentMaterial instanceof LilToonMaterial)
-						compiledKeys.push(programSignature(currentMaterial));
-			});
-			return target;
-		});
+		const compileAsync = vi.fn(
+			async (
+				target: Scene,
+				_camera: PerspectiveCamera,
+				_targetScene?: Scene,
+			) => {
+				target.traverse((object) => {
+					const mesh = object as Mesh;
+					if (!mesh.isMesh) return;
+					const materials = Array.isArray(mesh.material)
+						? mesh.material
+						: [mesh.material];
+					for (const currentMaterial of materials)
+						if (currentMaterial instanceof LilToonMaterial)
+							compiledKeys.push(programSignature(currentMaterial));
+				});
+				return target;
+			},
+		);
 		(
 			renderer as unknown as { compileAsync: typeof compileAsync }
 		).compileAsync = compileAsync;
@@ -388,6 +410,87 @@ describe("compileLilToonAsync", () => {
 		second.geometry.dispose();
 	});
 
+	it("submits one program per submitNext call through the compile session", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			first = new Mesh(new BoxGeometry(), new LilToonMaterial()),
+			second = new Mesh(new BoxGeometry(), new LilToonMaterial());
+		scene.add(first, second);
+		const renderer = makeRenderer(() => {});
+		const compileAsync = vi.fn(
+			async (
+				target: Scene,
+				_camera: PerspectiveCamera,
+				_targetScene?: Scene,
+			) => {
+				const compiled: Object3D[] = [];
+				target.traverse((object) => compiled.push(object));
+				expect(compiled).toHaveLength(1);
+				return target;
+			},
+		);
+		(
+			renderer as unknown as { compileAsync: typeof compileAsync }
+		).compileAsync = compileAsync;
+		const release = enableLilToon(renderer);
+
+		const session = await createLilToonProgramCompileSession(
+			renderer,
+			scene,
+			camera,
+		);
+		try {
+			expect(session.pending).toBe(2);
+			expect(session.submitted).toBe(false);
+			expect(session.submitNext()).toBe(true);
+			expect(compileAsync).toHaveBeenCalledOnce();
+			expect(compileAsync.mock.calls[0]![2]).toBe(scene);
+			expect(session.pending).toBe(1);
+			expect(session.submitNext()).toBe(true);
+			expect(session.submitNext()).toBe(false);
+			expect(session.submitted).toBe(true);
+			expect(compileAsync).toHaveBeenCalledTimes(2);
+			session.prepareTextures();
+			await session.settle();
+		} finally {
+			session.release();
+		}
+
+		release();
+		first.geometry.dispose();
+		second.geometry.dispose();
+		(first.material as LilToonMaterial).dispose();
+		(second.material as LilToonMaterial).dispose();
+	});
+
+	it("rejects session calls after release", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			mesh = new Mesh(new BoxGeometry(), new LilToonMaterial());
+		scene.add(mesh);
+		const renderer = makeRenderer(() => {});
+		(
+			renderer as unknown as {
+				compileAsync: (target: Scene) => Promise<Scene>;
+			}
+		).compileAsync = vi.fn(async (target: Scene) => target);
+		const release = enableLilToon(renderer);
+
+		const session = await createLilToonProgramCompileSession(
+			renderer,
+			scene,
+			camera,
+		);
+		session.release();
+		expect(() => session.submitNext()).toThrow(
+			"LilToonProgramCompileSession was already released.",
+		);
+
+		release();
+		mesh.geometry.dispose();
+		(mesh.material as LilToonMaterial).dispose();
+	});
+
 	it("requires the renderer pass installation", () => {
 		const renderer = makeRenderer(() => {}),
 			scene = new Scene(),
@@ -408,7 +511,15 @@ describe("compileLilToonAsync", () => {
 		scene.add(mesh);
 		scene.onBeforeRender = hostHook;
 		const renderer = makeRenderer(() => {}),
-			compileAsync = vi.fn().mockRejectedValue(new Error("shader failure"));
+			compileAsync = vi
+				.fn<
+					(
+						target: Scene,
+						camera: PerspectiveCamera,
+						targetScene?: Scene,
+					) => Promise<Scene>
+				>()
+				.mockRejectedValue(new Error("shader failure"));
 		(
 			renderer as unknown as { compileAsync: typeof compileAsync }
 		).compileAsync = compileAsync;
@@ -421,7 +532,7 @@ describe("compileLilToonAsync", () => {
 		expect(mesh.customDepthMaterial).toBeUndefined();
 		expect(mesh.customDistanceMaterial).toBeUndefined();
 		expect(scene.onBeforeRender).toBe(hostHook);
-		expect(compileAsync).toHaveBeenCalledOnce();
+		expect(compileAsync).toHaveBeenCalledTimes(2);
 		release();
 		material.dispose();
 		mesh.geometry.dispose();

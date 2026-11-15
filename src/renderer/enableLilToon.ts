@@ -100,6 +100,17 @@ class AutomaticPasses {
 	private readonly recipes = new Map<LilToonMaterial, Recipe>();
 	private readonly proxies = new WeakMap<Mesh, Mesh>();
 	private readonly hidden = new MeshBasicMaterial({ visible: false });
+	/** Texture views bound by derived pass materials created for prepared sources. */
+	collectDerivedTextureViews(views: Set<Texture>): void {
+		for (const recipe of this.recipes.values()) {
+			recipe.outline.prepareTextureViews(views);
+			// `recipe.map` is the shadow-pass clone assigned to depth/distance
+			// `.map`; `shadowAlphaMask.map.value` may hold a separate mask view.
+			if (recipe.map) views.add(recipe.map);
+			const mask = recipe.shadowAlphaMask.map.value;
+			if (mask) views.add(mask);
+		}
+	}
 	private recipe(source: LilToonMaterial): Recipe {
 		let recipe = this.recipes.get(source);
 		if (!recipe) {
@@ -404,11 +415,28 @@ export interface LilToonProgramCompileSession {
 	 */
 	prepareTextures(): void;
 	/**
+	 * Upload one pending texture for the session's scenes. Texture uploads are
+	 * synchronous with the driver and can dominate a task when run all at once
+	 * on drivers such as ANGLE D3D11, so callers that pace work call this
+	 * between tasks after {@link submitNext}. Shares its pending list with
+	 * {@link prepareTextures}; returns false once every stale view is uploaded.
+	 */
+	prepareNextTexture(): boolean;
+	/**
 	 * Resolve once every submitted program reports ready through
 	 * KHR_parallel_shader_compile (or immediately when the extension is
 	 * unavailable, matching WebGLRenderer.compileAsync()).
 	 */
 	settle(): Promise<void>;
+	/**
+	 * Run one renderer program's first-use queries (the LINK_STATUS wait and
+	 * uniform/attribute enumeration three.js defers until the first draw).
+	 * Drivers that defer link work until first use, e.g. ANGLE D3D11, charge
+	 * every program's finalization to the render task unless the queries run
+	 * earlier. Call between tasks after {@link settle}; returns false once
+	 * every program in the renderer's list has been finalized.
+	 */
+	finalizeNext(): boolean;
 	/** Undo the pass hooks installed while compiling. Idempotent. */
 	release(): void;
 }
@@ -533,23 +561,11 @@ function waitForSubmittedCompiles(
 	});
 }
 
-function prepareLilToonTextureViews(
+function collectStaleLilToonTextureViews(
 	renderer: WebGLRenderer,
-	roots: readonly Object3D[],
-): void {
-	const views = new Set<Texture>();
-	for (const root of roots)
-		root.traverseVisible((object) => {
-			const mesh = object as Mesh;
-			if (!mesh.isMesh) return;
-			const materials = Array.isArray(mesh.material)
-				? mesh.material
-				: [mesh.material];
-			for (const material of materials)
-				if (material instanceof LilToonMaterial)
-					material.prepareTextureViews(views);
-		});
-	if (views.size === 0) return;
+	views: ReadonlySet<Texture>,
+): Texture[] {
+	if (views.size === 0) return [];
 	const properties = (
 		renderer as unknown as {
 			properties?: { get(value: object): { __version?: number } };
@@ -557,29 +573,28 @@ function prepareLilToonTextureViews(
 	).properties;
 	if (!properties)
 		throw new Error("WebGLRenderer texture cache is unavailable.");
-	// A clone can advance a shared Source after the caller uploaded it. Only
-	// refresh a Source when Three's actual GPU cache is behind that version.
-	const staleSources = new Set(
-		[...views]
-			.filter((view) => {
-				const cachedVersion = properties.get(view.source).__version;
-				return (
-					cachedVersion !== undefined && cachedVersion !== view.source.version
-				);
-			})
-			.map((view) => view.source),
+	// A clone can advance a shared Source after the caller uploaded it. Refresh
+	// a Source when Three's actual GPU cache is behind that version — including
+	// sources that were never uploaded at all, which otherwise defer their
+	// upload to the first draw call that binds them.
+	const stale = [...views].filter(
+		(view) => properties.get(view.source).__version !== view.source.version,
 	);
-	const stale = [...views].filter((view) => staleSources.has(view.source));
 	// One mark per shared Source is enough to advance its image version. Marking
 	// every material view causes repeated transfers of the same GPU image.
+	// Sources with no GPU cache entry upload as-is; only a behind-version cache
+	// needs the bump.
 	const marked = new Set<Texture["source"]>();
 	for (const view of stale)
-		if (!marked.has(view.source)) {
+		if (
+			properties.get(view.source).__version !== undefined &&
+			!marked.has(view.source)
+		) {
 			view.needsUpdate = true;
 			marked.add(view.source);
 		}
 	// Distinct sampler/color-space cache keys still need their own GL handle.
-	for (const view of stale) renderer.initTexture(view);
+	return stale;
 }
 
 /** Compile the lilToon variants currently selected for a scene before its first draw. */
@@ -712,7 +727,34 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 				const units = collectCompileUnits(roots);
 				const compiles: Promise<void>[] = [];
 				let next = 0;
-				let texturesPrepared = false;
+				let finalizeIndex = 0;
+				let staleTextureViews: Texture[] | null = null;
+				let textureIndex = 0;
+				const collectStaleViews = (): Texture[] => {
+					const views = new Set<Texture>();
+					for (const root of roots)
+						root.traverseVisible((object) => {
+							const mesh = object as Mesh;
+							if (!mesh.isMesh) return;
+							const materials = Array.isArray(mesh.material)
+								? mesh.material
+								: [mesh.material];
+							for (const material of materials)
+								if (material instanceof LilToonMaterial)
+									material.prepareTextureViews(views);
+							// Skeleton bone data binds through a uniform that the
+							// renderer uploads at the first skinned draw.
+							const skinned = mesh as SkinnedMesh;
+							if (skinned.isSkinnedMesh && skinned.skeleton?.boneTexture)
+								views.add(skinned.skeleton.boneTexture);
+						});
+					// Derived pass materials (outline, fur, shadow alpha mask)
+					// carry their own texture views; they are not in any compile
+					// root but bind at first draw the same as source materials.
+					passes.collectDerivedTextureViews(views);
+					fur.collectDerivedTextureViews(views);
+					return collectStaleLilToonTextureViews(renderer, views);
+				};
 				return {
 					get pending() {
 						return units.length - next;
@@ -742,9 +784,22 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 							throw new Error(
 								"LilToonProgramCompileSession was already released.",
 							);
-						if (texturesPrepared) return;
-						texturesPrepared = true;
-						prepareLilToonTextureViews(renderer, roots);
+						if (staleTextureViews === null)
+							staleTextureViews = collectStaleViews();
+						for (; textureIndex < staleTextureViews.length; textureIndex++)
+							renderer.initTexture(staleTextureViews[textureIndex]!);
+					},
+					prepareNextTexture() {
+						if (released)
+							throw new Error(
+								"LilToonProgramCompileSession was already released.",
+							);
+						if (staleTextureViews === null)
+							staleTextureViews = collectStaleViews();
+						const view = staleTextureViews[textureIndex++];
+						if (view === undefined) return false;
+						renderer.initTexture(view);
+						return true;
 					},
 					settle() {
 						if (released)
@@ -755,6 +810,18 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 							() => next >= units.length,
 							compiles,
 						);
+					},
+					finalizeNext() {
+						if (released)
+							throw new Error(
+								"LilToonProgramCompileSession was already released.",
+							);
+						const program = renderer.info.programs?.[finalizeIndex];
+						if (program === undefined) return false;
+						finalizeIndex++;
+						program.getUniforms();
+						program.getAttributes();
+						return true;
 					},
 					release,
 				};

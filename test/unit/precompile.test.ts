@@ -137,7 +137,11 @@ describe("compileLilToonAsync", () => {
 		renderer.render(scene, camera);
 		expect(material.uniforms.u_MainTex!.value).toBe(prepared);
 		expect(source.source.version).toBe(version);
-		expect(initTexture).toHaveBeenCalledOnce();
+		// Derived pass materials (outline/shadow clones) warm their own views
+		// alongside the source view; the source view itself uploads exactly once.
+		expect(
+			initTexture.mock.calls.filter(([view]) => view === prepared),
+		).toHaveLength(1);
 
 		release();
 		material.dispose();
@@ -461,6 +465,48 @@ describe("compileLilToonAsync", () => {
 		second.geometry.dispose();
 		(first.material as LilToonMaterial).dispose();
 		(second.material as LilToonMaterial).dispose();
+	});
+
+	it("finalizes one renderer program per finalizeNext call", async () => {
+		const scene = new Scene(),
+			camera = new PerspectiveCamera(),
+			mesh = new Mesh(new BoxGeometry(), new LilToonMaterial());
+		scene.add(mesh);
+		const renderer = makeRenderer(() => {});
+		(
+			renderer as unknown as {
+				compileAsync: (target: Scene) => Promise<Scene>;
+			}
+		).compileAsync = vi.fn(async (target: Scene) => target);
+		const programs = [
+			{ getUniforms: vi.fn(() => ({})), getAttributes: vi.fn(() => ({})) },
+			{ getUniforms: vi.fn(() => ({})), getAttributes: vi.fn(() => ({})) },
+		];
+		(
+			renderer.info as unknown as { programs?: typeof programs }
+		).programs = programs;
+		const release = enableLilToon(renderer);
+
+		const session = await createLilToonProgramCompileSession(
+			renderer,
+			scene,
+			camera,
+		);
+		try {
+			expect(session.finalizeNext()).toBe(true);
+			expect(programs[0]!.getUniforms).toHaveBeenCalledOnce();
+			expect(programs[0]!.getAttributes).toHaveBeenCalledOnce();
+			expect(programs[1]!.getUniforms).not.toHaveBeenCalled();
+			expect(session.finalizeNext()).toBe(true);
+			expect(session.finalizeNext()).toBe(false);
+			expect(programs[1]!.getUniforms).toHaveBeenCalledOnce();
+		} finally {
+			session.release();
+		}
+
+		release();
+		mesh.geometry.dispose();
+		(mesh.material as LilToonMaterial).dispose();
 	});
 
 	it("rejects session calls after release", async () => {

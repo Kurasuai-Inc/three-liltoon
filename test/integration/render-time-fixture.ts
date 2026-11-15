@@ -14,7 +14,10 @@ import { uniformSnapshot } from "../helpers/uniform-snapshot.js";
 
 /** Real WebGL draws of an explicit synthetic box, including its automatic outline. */
 export async function verifyRenderTime() {
-	const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+	const renderer = new WebGLRenderer({
+		antialias: true,
+		preserveDrawingBuffer: true,
+	});
 	renderer.setSize(256, 256);
 	document.body.append(renderer.domElement);
 	const release = enableLilToon(renderer);

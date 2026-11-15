@@ -482,9 +482,8 @@ describe("compileLilToonAsync", () => {
 			{ getUniforms: vi.fn(() => ({})), getAttributes: vi.fn(() => ({})) },
 			{ getUniforms: vi.fn(() => ({})), getAttributes: vi.fn(() => ({})) },
 		];
-		(
-			renderer.info as unknown as { programs?: typeof programs }
-		).programs = programs;
+		(renderer.info as unknown as { programs?: typeof programs }).programs =
+			programs;
 		const release = enableLilToon(renderer);
 
 		const session = await createLilToonProgramCompileSession(

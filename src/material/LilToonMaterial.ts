@@ -46,6 +46,7 @@ import {
 	getOutlineShaderProgram,
 	type LilToonShaderProgram,
 } from "../shader/ShaderProgramLibrary.js";
+import { analyzeShaderSource } from "../shader/shaderAnalysis.js";
 import {
 	collectMaterialWarnings,
 	shaderPropertyReferences,
@@ -287,13 +288,10 @@ export class LilToonMaterial extends RawShaderMaterial {
 			_Globals: { value: globalUniforms },
 			[OUTPUT_SRGB_UNIFORM]: { value: 1 },
 		};
-		const cubeSamplers = new Set(
-			[
-				...`${program.vertexShader}\n${program.fragmentShader}`.matchAll(
-					/uniform\s+(?:\w+\s+)?samplerCube\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g,
-				),
-			].map((match) => match[1]!),
-		);
+		const cubeSamplers = new Set([
+			...analyzeShaderSource(program.vertexShader).cubeSamplers,
+			...analyzeShaderSource(program.fragmentShader).cubeSamplers,
+		]);
 		for (const [uniformName, property] of program.samplerBindings) {
 			uniforms[uniformName] = {
 				value:
@@ -625,9 +623,11 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.#textureViews.dispose();
 		this.#usedProperties = source.#usedProperties;
 
+		// The globals struct is identical before the morph/sRGB source rewrite;
+		// the program's source also reuses the shared shader-source parse.
 		this.globalUniforms = createGlobalUniforms(
-			source.vertexShader,
-			source.fragmentShader,
+			source.#program.vertexShader,
+			source.#program.fragmentShader,
 		);
 		this.uniforms._Globals = { value: this.globalUniforms };
 
@@ -741,10 +741,9 @@ export class LilToonMaterial extends RawShaderMaterial {
 		this.uniforms.mochiyaMorphWeights = this.#morphWeights.uniform;
 		this.#samplerBindings.clear();
 		this.#cubeSamplers.clear();
-		for (const match of `${program.vertexShader}\n${program.fragmentShader}`.matchAll(
-			/uniform\s+(?:\w+\s+)?samplerCube\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g,
-		))
-			this.#cubeSamplers.add(match[1]!);
+		for (const shader of [program.vertexShader, program.fragmentShader])
+			for (const uniform of analyzeShaderSource(shader).cubeSamplers)
+				this.#cubeSamplers.add(uniform);
 		for (const [uniform, property] of program.samplerBindings) {
 			this.#samplerBindings.set(uniform, property);
 			this.uniforms[uniform] = {

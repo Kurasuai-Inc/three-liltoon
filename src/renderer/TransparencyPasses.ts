@@ -12,7 +12,10 @@ import { AuxiliaryPassDraw } from "./AuxiliaryPassDraw.js";
 export class TransparencyPasses {
 	private draws = new AuxiliaryPassDraw();
 	/** Return the exact unlit scenes used by the nested transparent draws. */
-	prepareForCompile(scene: Object3D): Scene[] {
+	async prepareForCompile(
+		scene: Object3D,
+		pace: () => Promise<void>,
+	): Promise<Scene[]> {
 		const scenes: Scene[] = [];
 		const meshes: Mesh[] = [];
 		scene.traverseVisible((node) => {
@@ -60,6 +63,7 @@ export class TransparencyPasses {
 						),
 					);
 			}
+			await pace();
 		}
 		return scenes;
 	}

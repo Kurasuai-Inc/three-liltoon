@@ -1,4 +1,5 @@
 import { textureIsUsed } from "../shader/features.js";
+import { analyzeShaderSource } from "../shader/shaderAnalysis.js";
 import type { Texture } from "three";
 
 export type LilToonWarningCode =
@@ -77,11 +78,10 @@ export function shaderPropertyReferences(
 	vertex: string,
 	fragment: string,
 ): Set<string> {
-	return new Set(
-		[...`${vertex}\n${fragment}`.matchAll(/\b_Globals\.([A-Za-z_]\w*)/g)].map(
-			(match) => match[1]!,
-		),
-	);
+	return new Set([
+		...analyzeShaderSource(vertex).usedProperties,
+		...analyzeShaderSource(fragment).usedProperties,
+	]);
 }
 
 function textureGates(property: string): string[] | null {

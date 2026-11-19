@@ -1,4 +1,10 @@
-import { Mesh, Scene, type Object3D, type WebGLRenderer } from "three";
+import {
+	Mesh,
+	Scene,
+	type Object3D,
+	type Texture,
+	type WebGLRenderer,
+} from "three";
 import { LilToonMaterial } from "../material/LilToonMaterial.js";
 import { FurDeformation } from "./FurDeformation.js";
 import type { SkinnedMesh } from "three";
@@ -48,6 +54,18 @@ export class FurPasses {
 		}
 	>();
 	private depth = 0;
+	/** Texture views bound by derived fur pass materials created for prepared sources. */
+	collectDerivedTextureViews(views: Set<Texture>): void {
+		for (const recipe of this.recipes.values()) {
+			for (const material of recipe.materials)
+				material.prepareTextureViews(views);
+			// Without GPU deformation, ribbon position data binds as
+			// __furVertices and uploads at first bind like any other view.
+			// With deformation it binds a render-target texture, which needs no
+			// host upload.
+			if (!recipe.deformation) views.add(recipe.geometry.texture);
+		}
+	}
 	prepare(
 		renderer: WebGLRenderer,
 		scene: Object3D,

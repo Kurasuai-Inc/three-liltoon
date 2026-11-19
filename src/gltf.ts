@@ -1,5 +1,6 @@
 export { GLTFLilToonExtension } from "./loaders/GLTFLilToonExtension.js";
 export type { GLTFLilToonExtensionOptions } from "./loaders/GLTFLilToonExtension.js";
+export type { LilToonTaskPacing } from "./utils/taskPacing.js";
 export type {
 	LilToonWarning,
 	LilToonWarningCode,

@@ -18,6 +18,7 @@ export interface LilToonShaderProgram {
 	resources: readonly ShaderResource[];
 }
 const cache = new Map<string, LilToonShaderProgram>();
+const resourceCache = new Map<string, { vertex: string; fragment: string }>();
 
 /** Diagnostic helper; production bindings come from SPIR-V reflection. */
 export function parseSamplerBindings(source: string): Map<string, string> {
@@ -133,20 +134,35 @@ export function getLilToonShaderProgram(
 	const key = `${base}:${mask}:${resourceKey}`;
 	const hit = cache.get(key);
 	if (hit) return { ...hit, samplerBindings: new Map(hit.samplerBindings) };
-	const omitted = template.resources.filter((r) => !active.includes(r));
+	// Feature defines vary independently of resource topology. Reuse the
+	// costly sampler rewrite, then add each program's defines separately.
+	const resourceCacheKey = `${base}:${resourceKey}`;
+	let specialized = resourceCache.get(resourceCacheKey);
+	if (!specialized) {
+		const omitted = template.resources.filter((r) => !active.includes(r));
+		const specializeStage = (source: string, stage: string) =>
+			specializeResources(
+				source,
+				omitted.filter((r) => r.stage === stage),
+				new Map(
+					[...aliases].filter(([name]) =>
+						active.some((r) => r.uniform === name && r.stage === stage),
+					),
+				),
+			);
+		specialized = {
+			vertex: specializeStage(template.vertex, "vertex"),
+			fragment: specializeStage(template.fragment, "fragment"),
+		};
+		if (resourceCache.size >= 128)
+			resourceCache.delete(resourceCache.keys().next().value!);
+		resourceCache.set(resourceCacheKey, specialized);
+	}
 	const defines = flags
 		.map((on, id) => `#define SPIRV_CROSS_CONSTANT_ID_${id} ${on}`)
 		.join("\n");
-	const specialize = (source: string, stage: string) =>
-		specializeResources(
-			source,
-			omitted.filter((r) => r.stage === stage),
-			new Map(
-				[...aliases].filter(([name]) =>
-					active.some((r) => r.uniform === name && r.stage === stage),
-				),
-			),
-		)
+	const specialize = (source: string) =>
+		source
 			.replace(
 				/\b_Globals\._MainGradationStrength\b/g,
 				textures._MainGradationTex ? "$&" : "0.0",
@@ -158,8 +174,8 @@ export function getLilToonShaderProgram(
 			.replace(/^(#version 300 es)/, `$1\n${defines}`);
 	const result: LilToonShaderProgram = {
 		key,
-		vertexShader: specialize(template.vertex, "vertex"),
-		fragmentShader: specialize(template.fragment, "fragment"),
+		vertexShader: specialize(specialized.vertex),
+		fragmentShader: specialize(specialized.fragment),
 		samplerBindings: new Map(
 			active.map((r) => [aliases.get(r.uniform) ?? r.uniform, r.property]),
 		),

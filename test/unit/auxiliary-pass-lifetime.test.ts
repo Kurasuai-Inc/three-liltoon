@@ -25,6 +25,11 @@ describe("auxiliary pass lifetime", () => {
 				mesh = new Mesh(new PlaneGeometry(), source),
 				camera = new PerspectiveCamera();
 			scene.add(mesh);
+			// A rotated, offset source (like a Z-up export) must keep its transform
+			// through draw preparation, which rebuilds the proxy's matrixWorld.
+			mesh.rotation.set(-Math.PI / 2, 0, Math.PI / 5);
+			mesh.position.set(0.3, -0.2, 0.1);
+			scene.updateMatrixWorld();
 			const draws = new AuxiliaryPassDraw();
 			const renderer = {
 				autoClear: true,

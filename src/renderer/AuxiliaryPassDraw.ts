@@ -110,7 +110,11 @@ export class AuxiliaryPassDraw {
 	private syncProxy(r: AuxiliaryRecipe): void {
 		const { mesh, source, material, proxy } = r;
 		syncPassMaterial(source, material);
-		// No nested render updates world matrices; the proxy draws in the enclosing render.
+		// The proxy is a direct child of its identity scene. Draw preparation calls
+		// updateWorldMatrix (LilToonUniformBinder), which rebuilds matrixWorld from
+		// matrix, so both carry the source transform; copying only matrixWorld drew
+		// rotated sources (Z-up exports) in their unrotated frame.
+		proxy.matrix.copy(mesh.matrixWorld);
 		proxy.matrixWorld.copy(mesh.matrixWorld);
 		proxy.layers.mask = mesh.layers.mask;
 		proxy.morphTargetInfluences = mesh.morphTargetInfluences;

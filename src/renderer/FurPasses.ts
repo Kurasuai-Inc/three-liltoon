@@ -236,6 +236,8 @@ export class FurPasses {
 						render.call(renderer, temporary, args[2]);
 						this.uploaded.add(geometry.geometry);
 					}
+					// Draw preparation rebuilds matrixWorld from matrix (updateWorldMatrix).
+					proxy.matrix.copy(mesh.matrixWorld);
 					proxy.matrixWorld.copy(mesh.matrixWorld);
 					proxy.modelViewMatrix.multiplyMatrices(
 						args[2].matrixWorldInverse,

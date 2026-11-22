@@ -160,6 +160,7 @@ var AuxiliaryPassDraw = class {
   syncProxy(r) {
     const { mesh, source, material, proxy } = r;
     syncPassMaterial(source, material);
+    proxy.matrix.copy(mesh.matrixWorld);
     proxy.matrixWorld.copy(mesh.matrixWorld);
     proxy.layers.mask = mesh.layers.mask;
     proxy.morphTargetInfluences = mesh.morphTargetInfluences;
@@ -1000,6 +1001,7 @@ var FurPasses = class {
             render.call(renderer, temporary, args[2]);
             this.uploaded.add(geometry.geometry);
           }
+          proxy.matrix.copy(mesh.matrixWorld);
           proxy.matrixWorld.copy(mesh.matrixWorld);
           proxy.modelViewMatrix.multiplyMatrices(
             args[2].matrixWorldInverse,

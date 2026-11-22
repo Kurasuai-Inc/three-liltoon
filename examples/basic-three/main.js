@@ -27,7 +27,7 @@ const context = canvas.getContext("webgl2", { antialias: true, alpha: false });
 if (!context) throw new Error("This example requires WebGL2.");
 
 const renderer = new WebGLRenderer({ canvas, context, antialias: true });
-enableLilToon(renderer);
+enableLilToon(renderer, { materialRenderQueue: true });
 renderer.outputColorSpace = SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
@@ -55,7 +55,7 @@ scene.add(sun, sun.target);
 
 const material = new LilToonMaterial({
 	name: "Mochiya example",
-	renderMode: "opaque",
+	shaderVariant: "Hidden/lilToonOutline",
 	properties: {
 		_Color: [0.91, 0.35, 0.48, 1],
 		_UseShadow: 1,
@@ -68,7 +68,6 @@ const material = new LilToonMaterial({
 		_RimBorder: 0.45,
 		_RimBlur: 0.55,
 		_OutlineWidth: 0.055,
-		_UseOutline: 1,
 		_OutlineColor: [0.16, 0.06, 0.1, 1],
 	},
 });

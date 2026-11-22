@@ -28,11 +28,11 @@ This persistent tool installation is independent of review worktrees.
 `tools:check` checks the repository's pinned DXC/SPIRV-Tools versions before
 shader generation. The installed executable SHA-256 values are:
 
-| Executable | SHA-256 |
-| --- | --- |
-| dxc | 52c46bfb0019a7a39757fe925f33249f61b7473800d85bb911a6b9d07fd65e50 |
+| Executable  | SHA-256                                                          |
+| ----------- | ---------------------------------------------------------------- |
+| dxc         | 52c46bfb0019a7a39757fe925f33249f61b7473800d85bb911a6b9d07fd65e50 |
 | spirv-cross | f7ff9850a0e8e3bb93f27b43689b898c9fb2c02cf22f40d08f209a7f533c8da6 |
-| spirv-val | d8db252e34aa10c388248d21bc834096e9b54587000e7a3ca2db56e9c36ea450 |
+| spirv-val   | d8db252e34aa10c388248d21bc834096e9b54587000e7a3ca2db56e9c36ea450 |
 
 CI runs shader generation, strict type checking, the unit suite, and package
 staging. Browser verification runs on the managed MotionAtelier review preview;

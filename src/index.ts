@@ -44,3 +44,9 @@ export {
 	LILTOON_TEXTURE_SEMANTICS,
 	type LilToonTextureSemantic,
 } from "./generated/textureSemantics.js";
+
+export type { EnableLilToonOptions } from "./renderer/enableLilToon.js";
+export { compareLilToonRenderQueue } from "./renderer/materialRenderQueue.js";
+
+export type { LilToonShaderVariant } from "./material/shaderVariants.js";
+export { LilToonShaderVariantMismatchError } from "./material/shaderVariants.js";

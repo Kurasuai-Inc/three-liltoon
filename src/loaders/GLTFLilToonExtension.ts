@@ -4,6 +4,7 @@ import type {
 	GLTFLoaderPlugin,
 	GLTFParser,
 } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { isShaderVariant } from "../material/shaderVariants.js";
 import { LilToonMaterial } from "../material/LilToonMaterial.js";
 import {
 	LILTOON_GLTF_EXTENSION,
@@ -117,6 +118,7 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 						: /OnePassTransparent/i.test(definition.shaderVariant ?? "")
 							? "one-pass"
 							: "normal"),
+				renderQueue: definition.renderQueue,
 				properties: definition.cubeTextures?._ReflectionCubeTex
 					? { ...definition.properties, _ReflectionCubeTex_HDR: [1, 1, 0, 0] }
 					: definition.properties,
@@ -143,9 +145,8 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 				});
 			}
 			if (
-				/furonly|tessellation|liltoonlite|liltoonmulti/i.test(
-					definition.shaderVariant ?? "",
-				)
+				definition.shaderVariant !== undefined &&
+				!isShaderVariant(definition.shaderVariant)
 			) {
 				warnings.push({
 					severity: "warning",
@@ -153,7 +154,7 @@ export class GLTFLilToonExtension implements GLTFLoaderPlugin {
 					materialName: material.name,
 					shaderKey: material.shaderKey,
 					property: "shaderVariant",
-					message: `Unity shader ${definition.shaderVariant} is not reproduced by ${material.shaderKey}. Loading with the standard forward fallback.`,
+					message: `Unity shader ${definition.shaderVariant} is not in the supported shader table; passes follow renderMode ${material.renderMode}/${material.transparencyMode} (${material.shaderKey}).`,
 				});
 			}
 			this.#materialWarnings.set(

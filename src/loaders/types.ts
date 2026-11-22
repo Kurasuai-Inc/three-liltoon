@@ -45,9 +45,15 @@ export interface GLTFLilToonMaterialDefinition {
 	specVersion?: "1.0" | "1.1" | "1.2" | typeof LILTOON_GLTF_SPEC_VERSION;
 	/** Source lilToon version, retained as metadata. */
 	lilToonVersion?: string | number;
-	/** Original Unity shader name; retained for render-mode inference and Outline/Multi semantics, not full shader support. */
+	/** Original Unity shader name; retained for render-mode inference when renderMode is absent and for Outline/Multi semantics. A recognised name must agree with renderMode/transparencyMode. */
 	shaderVariant?: string;
-	/** When omitted, inferred from the original supported shader family. */
+	/** Effective Unity material queue. Does not change blending or depth state.
+	 * @asType integer
+	 * @minimum 0
+	 * @maximum 5000
+	 */
+	renderQueue?: number;
+	/** Authoritative pass selection; the fork writer always writes it. When omitted (older writers), inferred from the original supported shader family. */
 	renderMode?: LilToonRenderMode;
 	/** Transparent family pass configuration. Defaults to normal or is inferred from shaderVariant. */
 	transparencyMode?: LilToonTransparencyMode;

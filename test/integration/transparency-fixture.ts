@@ -44,6 +44,7 @@ export function verifyTransparency() {
 	geometry.morphAttributes.position = [morph];
 	const source = new LilToonMaterial({
 		renderMode: "transparent",
+		shaderVariant: "Hidden/lilToonTransparentOutline",
 		properties: {
 			_AsUnlit: 1,
 			_Color: [1, 0.2, 0.1, 0.7],

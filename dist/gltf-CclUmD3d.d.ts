@@ -1,4 +1,4 @@
-import { L as LilToonWarning } from './GLTFLilToonExtension-Da4AOnBM.js';
+import { b as LilToonWarning } from './GLTFLilToonExtension-CSCk4cIj.js';
 import { Color, Vector2, Vector3, Vector4, ColorRepresentation, Texture, Matrix4, RawShaderMaterial, Object3D, WebGLRenderer, Loader, LoadingManager } from 'three';
 
 type LilToonRenderMode = "opaque" | "cutout" | "transparent" | "refraction" | "refraction-blur" | "fur" | "fur-cutout" | "fur-two-pass" | "gem";
@@ -12,10 +12,15 @@ interface LilToonMaterialParameters {
     map?: Texture | null;
     alphaTest?: number;
     name?: string;
+    /** Explicit capture clock; null/default uses elapsed wall time. Not a serialized material property. */
+    renderTimeSeconds?: number | null;
+    /** Authoritative pass selection (Kurasuai fork). Defaults to opaque. */
     renderMode?: LilToonRenderMode;
-    /** Original Unity shader name; lilToon uses Outline shader variants to enable its outline pass. */
+    /** Original Unity shader name. A recognised name must agree with the modes (LilToonShaderVariantMismatchError); its Outline suffix enables the outline pass. */
     shaderVariant?: string;
-    /** Unity transparent pass configuration; additional-light passes remain deferred. */
+    /** Effective Unity queue (0–5000). Requires materialRenderQueue sorting opt-in. */
+    renderQueue?: number;
+    /** Unity transparent pass configuration for renderMode "transparent"; additional-light passes remain deferred. */
     transparencyMode?: LilToonTransparencyMode;
     properties?: Record<string, LilToonScalarOrVector>;
     textures?: Record<string, Texture | null>;
@@ -48,16 +53,55 @@ interface LilToonFeatureSet {
     outline: boolean;
     dissolve: boolean;
 }
-declare function detectLilToonFeatures(properties: Record<string, LilToonScalarOrVector>, shaderVariant?: string): LilToonFeatureSet;
+declare function detectLilToonFeatures(properties: Record<string, LilToonScalarOrVector>, shaderVariant?: string, renderMode?: LilToonRenderMode, transparencyMode?: LilToonTransparencyMode): LilToonFeatureSet;
 
 interface SerializedLilToonMaterial {
     specVersion?: string;
     lilToonVersion?: string | number;
     renderMode: LilToonRenderMode;
     shaderVariant?: string;
+    /** Effective Unity material queue. Does not change blending or depth state.
+     * @asType integer
+     * @minimum 0
+     * @maximum 5000
+     */
+    renderQueue?: number;
     transparencyMode?: LilToonTransparencyMode;
     properties: Record<string, LilToonScalarOrVector>;
     textures: Record<string, string | number | null>;
+}
+
+/** Supported Unity shader names and their pass configurations. */
+declare const shaderVariants: {
+    readonly lilToon: readonly ["opaque", "normal", false];
+    readonly "Hidden/lilToonOutline": readonly ["opaque", "normal", true];
+    readonly "Hidden/lilToonCutout": readonly ["cutout", "normal", false];
+    readonly "Hidden/lilToonCutoutOutline": readonly ["cutout", "normal", true];
+    readonly "Hidden/lilToonTransparent": readonly ["transparent", "normal", false];
+    readonly "Hidden/lilToonTransparentOutline": readonly ["transparent", "normal", true];
+    readonly "Hidden/lilToonOnePassTransparent": readonly ["transparent", "one-pass", false];
+    readonly "Hidden/lilToonOnePassTransparentOutline": readonly ["transparent", "one-pass", true];
+    readonly "Hidden/lilToonTwoPassTransparent": readonly ["transparent", "two-pass", false];
+    readonly "Hidden/lilToonTwoPassTransparentOutline": readonly ["transparent", "two-pass", true];
+    readonly "Hidden/lilToonRefraction": readonly ["refraction", "normal", false];
+    readonly "Hidden/lilToonRefractionBlur": readonly ["refraction-blur", "normal", false];
+    readonly "Hidden/lilToonFur": readonly ["fur", "normal", false];
+    readonly "Hidden/lilToonFurCutout": readonly ["fur-cutout", "normal", false];
+    readonly "Hidden/lilToonFurTwoPass": readonly ["fur-two-pass", "normal", false];
+    readonly "Hidden/lilToonGem": readonly ["gem", "normal", false];
+};
+type LilToonShaderVariant = keyof typeof shaderVariants;
+/**
+ * A recognised Unity shader name that selects different passes than the authoritative
+ * renderMode/transparencyMode. The fork keeps the modes as the single source and the
+ * name as metadata, so a disagreement is an input error rather than a silent override.
+ */
+declare class LilToonShaderVariantMismatchError extends Error {
+    readonly shaderVariant: LilToonShaderVariant;
+    readonly renderMode: LilToonRenderMode;
+    readonly transparencyMode: LilToonTransparencyMode;
+    readonly code = "LILTOON_SHADER_VARIANT_MISMATCH";
+    constructor(shaderVariant: LilToonShaderVariant, renderMode: LilToonRenderMode, transparencyMode: LilToonTransparencyMode);
 }
 
 declare class LilToonMaterial extends RawShaderMaterial {
@@ -67,11 +111,29 @@ declare class LilToonMaterial extends RawShaderMaterial {
     readonly lilToonProperties: Record<string, LilToonScalarOrVector>;
     readonly lilToonTextures: Record<string, Texture | null>;
     globalUniforms: LilToonGlobalUniforms;
-    renderMode: LilToonRenderMode;
-    shaderVariant?: string;
+    /** Effective Unity queue (0-5000); ordering only, never blend or depth state. */
+    get renderQueue(): number | undefined;
+    set renderQueue(value: number | undefined);
+    get renderMode(): LilToonRenderMode;
+    set renderMode(value: LilToonRenderMode);
+    /** Unity transparent pass configuration; meaningful only for renderMode "transparent". */
+    get transparencyMode(): LilToonTransparencyMode;
+    set transparencyMode(value: LilToonTransparencyMode);
+    /** Original Unity shader name, when the source had one. A recognised name must agree with the modes. */
+    get shaderVariant(): string | undefined;
+    set shaderVariant(value: string | undefined);
+    /** The upstream table entry that selects this material's surface, transparency and outline passes. */
+    get passVariant(): LilToonShaderVariant;
+    /**
+     * Replace the whole selection at once and rebuild program and render state. Used by
+     * pass proxies following their source, and by callers switching to a named shader.
+     */
+    setPassSelection(renderMode: LilToonRenderMode, transparencyMode?: LilToonTransparencyMode, shaderVariant?: string): this;
     pass: LilToonPass;
-    transparencyMode: LilToonTransparencyMode;
     featureSet: LilToonFeatureSet;
+    /** Explicit shader clock for capture. Null resumes the existing wall clock. */
+    get renderTimeSeconds(): number | null;
+    set renderTimeSeconds(value: number | null);
     get propertyRevision(): number;
     get textureRevision(): number;
     constructor(parameters?: LilToonMaterialParameters);
@@ -84,6 +146,8 @@ declare class LilToonMaterial extends RawShaderMaterial {
     toLilToonJSON(resolveTexture?: (texture: Texture, property: string) => string | number | null): SerializedLilToonMaterial;
     setTexture(name: string, texture: Texture | null): this;
     private bindTextureViews;
+    /** @internal Collect the exact views bound by the current draw pass. */
+    prepareTextureViews(views: Set<Texture>): void;
     dispose(): void;
     copy(source: LilToonMaterial): this;
     get map(): Texture | null;
@@ -141,9 +205,15 @@ interface GLTFLilToonMaterialDefinition {
     specVersion?: "1.0" | "1.1" | "1.2" | typeof LILTOON_GLTF_SPEC_VERSION;
     /** Source lilToon version, retained as metadata. */
     lilToonVersion?: string | number;
-    /** Original Unity shader name; retained for render-mode inference and Outline/Multi semantics, not full shader support. */
+    /** Original Unity shader name; retained for render-mode inference when renderMode is absent and for Outline/Multi semantics. A recognised name must agree with renderMode/transparencyMode. */
     shaderVariant?: string;
-    /** When omitted, inferred from the original supported shader family. */
+    /** Effective Unity material queue. Does not change blending or depth state.
+     * @asType integer
+     * @minimum 0
+     * @maximum 5000
+     */
+    renderQueue?: number;
+    /** Authoritative pass selection; the fork writer always writes it. When omitted (older writers), inferred from the original supported shader family. */
     renderMode?: LilToonRenderMode;
     /** Transparent family pass configuration. Defaults to normal or is inferred from shaderVariant. */
     transparencyMode?: LilToonTransparencyMode;
@@ -155,4 +225,4 @@ interface GLTFLilToonMaterialDefinition {
     cubeTextures?: Record<string, GLTFLilToonCubeTextureInfo>;
 }
 
-export { type GLTFLilToonCubeTextureInfo as G, LilToonMaterial as L, type SerializedLilToonMaterial as S, type LilToonGlobalUniforms as a, type LilToonMaterialParameters as b, LILTOON_GLTF_EXTENSION as c, LILTOON_GLTF_SPEC_VERSION as d, type LilToonFeatureSet as e, LilToonMaterialLoader as f, type LilToonRenderMode as g, type LilToonScalarOrVector as h, type LilToonTransparencyMode as i, detectLilToonFeatures as j, type GLTFLilToonMaterialDefinition as k, type GLTFLilToonPropertyValue as l, type GLTFLilToonTextureInfo as m };
+export { type GLTFLilToonCubeTextureInfo as G, LilToonMaterial as L, type SerializedLilToonMaterial as S, type LilToonGlobalUniforms as a, type LilToonMaterialParameters as b, LILTOON_GLTF_EXTENSION as c, LILTOON_GLTF_SPEC_VERSION as d, type LilToonFeatureSet as e, LilToonMaterialLoader as f, type LilToonRenderMode as g, type LilToonScalarOrVector as h, type LilToonShaderVariant as i, LilToonShaderVariantMismatchError as j, type LilToonTransparencyMode as k, detectLilToonFeatures as l, type GLTFLilToonMaterialDefinition as m, type GLTFLilToonPropertyValue as n, type GLTFLilToonTextureInfo as o };

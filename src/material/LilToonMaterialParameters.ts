@@ -37,10 +37,13 @@ export interface LilToonMaterialParameters {
 	name?: string;
 	/** Explicit capture clock; null/default uses elapsed wall time. Not a serialized material property. */
 	renderTimeSeconds?: number | null;
+	/** Authoritative pass selection (Kurasuai fork). Defaults to opaque. */
 	renderMode?: LilToonRenderMode;
-	/** Original Unity shader name; lilToon uses Outline shader variants to enable its outline pass. */
+	/** Original Unity shader name. A recognised name must agree with the modes (LilToonShaderVariantMismatchError); its Outline suffix enables the outline pass. */
 	shaderVariant?: string;
-	/** Unity transparent pass configuration; additional-light passes remain deferred. */
+	/** Effective Unity queue (0–5000). Requires materialRenderQueue sorting opt-in. */
+	renderQueue?: number;
+	/** Unity transparent pass configuration for renderMode "transparent"; additional-light passes remain deferred. */
 	transparencyMode?: LilToonTransparencyMode;
 	properties?: Record<string, LilToonScalarOrVector>;
 	textures?: Record<string, Texture | null>;

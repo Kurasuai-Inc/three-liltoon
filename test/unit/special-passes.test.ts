@@ -57,6 +57,8 @@ describe("special modes", () => {
 		"uses _UseOutline only for %s",
 		(shaderVariant, useOutline, expected) => {
 			const material = new LilToonMaterial({
+				renderMode:
+					shaderVariant === "Hidden/lilToonCutout" ? "cutout" : "opaque",
 				shaderVariant,
 				properties: { _UseOutline: useOutline },
 			});
@@ -73,6 +75,8 @@ describe("special modes", () => {
 			});
 			const copy = source.clone();
 			expect(copy.transparencyMode).toBe(transparencyMode);
+			// Kurasuai fork: the writer always writes the modes and no invented name.
+			expect(source.toLilToonJSON()).not.toHaveProperty("shaderVariant");
 			expect(source.toLilToonJSON().transparencyMode).toBe(transparencyMode);
 			const restored = new LilToonMaterialFactory().create(
 				source.toLilToonJSON(),

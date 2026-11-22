@@ -1,3 +1,4 @@
+import { installMaterialRenderQueue } from "./materialRenderQueue.js";
 import {
 	BackSide,
 	Mesh,
@@ -17,17 +18,20 @@ import {
 	LilToonMaterial,
 	prepareLilToonMaterialProgram,
 } from "../material/LilToonMaterial.js";
-import { isLilToonOutlineEnabled } from "../material/LilToonFeatureSet.js";
-import { setGlobalProperty } from "./LilToonUniformBinder.js";
+import { isLilToonOutlineDrawn } from "../material/LilToonFeatureSet.js";
+import { syncPassMaterial } from "./syncPassMaterial.js";
 import { SceneColorPasses } from "./SceneColorPasses.js";
 import { FurPasses } from "./FurPasses.js";
 import { TransparencyPasses } from "./TransparencyPasses.js";
-import { applyLilToonPassState } from "../utils/renderState.js";
 import { createTaskPace, type LilToonTaskPacing } from "../utils/taskPacing.js";
 
 type Recipe = {
 	source: LilToonMaterial;
-	outline: LilToonMaterial;
+	/** Created on first use (upstream 0.1.9): sources without a drawn outline never build one. */
+	outline: LilToonMaterial | null;
+	/** Source revisions last copied into the outline; -1 forces the first copy. */
+	outlinePropertyRevision: number;
+	outlineTextureRevision: number;
 	depth: MeshDepthMaterial;
 	distance: MeshDistanceMaterial;
 	shadowAlphaMask: {
@@ -103,7 +107,7 @@ class AutomaticPasses {
 	/** Texture views bound by derived pass materials created for prepared sources. */
 	collectDerivedTextureViews(views: Set<Texture>): void {
 		for (const recipe of this.recipes.values()) {
-			recipe.outline.prepareTextureViews(views);
+			recipe.outline?.prepareTextureViews(views);
 			// `recipe.map` is the shadow-pass clone assigned to depth/distance
 			// `.map`; `shadowAlphaMask.map.value` may hold a separate mask view.
 			if (recipe.map) views.add(recipe.map);
@@ -114,12 +118,6 @@ class AutomaticPasses {
 	private recipe(source: LilToonMaterial): Recipe {
 		let recipe = this.recipes.get(source);
 		if (!recipe) {
-			const outline = new LilToonMaterial({
-				pass: "outline",
-				renderMode: source.renderMode,
-				properties: source.lilToonProperties,
-				textures: source.lilToonTextures,
-			});
 			const depth = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
 			const distance = new MeshDistanceMaterial();
 			const shadowAlphaMask = {
@@ -132,7 +130,9 @@ class AutomaticPasses {
 			enableShadowAlphaMask(distance, shadowAlphaMask);
 			recipe = {
 				source,
-				outline,
+				outline: null,
+				outlinePropertyRevision: -1,
+				outlineTextureRevision: -1,
 				depth,
 				distance,
 				shadowAlphaMask,
@@ -143,7 +143,7 @@ class AutomaticPasses {
 				renderMode: source.renderMode,
 				release: () => {
 					source.removeEventListener("dispose", recipe!.release);
-					outline.dispose();
+					recipe!.outline?.dispose();
 					depth.dispose();
 					distance.dispose();
 					recipe!.map?.dispose();
@@ -156,40 +156,14 @@ class AutomaticPasses {
 			// renderer's explicit teardown ends the helper lifetime.
 			source.addEventListener("dispose", recipe.release);
 		}
-		// Keep automatic outlines on the same explicit capture clock on every draw.
-		recipe.outline.renderTimeSeconds = source.renderTimeSeconds;
 		// Read mutable standard Color edits as well as original property setters.
 		source.getProperty("_Color");
+		// Gates only the shadow-map UV transform below; outlines keep their own revisions.
 		const propertiesChanged =
 			recipe.propertyRevision !== source.propertyRevision ||
 			recipe.renderMode !== source.renderMode;
-		const texturesChanged = recipe.textureRevision !== source.textureRevision;
-		// Per-draw object/camera uniforms still refresh in onBeforeRender; only copied outline inputs are gated here.
-		if (propertiesChanged) {
-			for (const [name, value] of Object.entries(source.lilToonProperties)) {
-				recipe.outline.lilToonProperties[name] = value;
-				setGlobalProperty(recipe.outline.globalUniforms, name, value);
-			}
-			recipe.outline.setProperty("_Color", source.getProperty("_Color")!);
-			recipe.outline.renderMode = source.renderMode;
-			applyLilToonPassState(
-				recipe.outline,
-				source.renderMode,
-				source.lilToonProperties,
-				"outline",
-				recipe.outline.propertyRevision,
-			);
-			recipe.propertyRevision = source.propertyRevision;
-			recipe.renderMode = source.renderMode;
-		}
-		if (texturesChanged) {
-			for (const [name, texture] of Object.entries(source.lilToonTextures)) {
-				if (recipe.outline.lilToonTextures[name] !== texture)
-					recipe.outline.setTexture(name, texture);
-			}
-			recipe.textureRevision = source.textureRevision;
-		}
-		recipe.outline.visible = source.visible;
+		recipe.propertyRevision = source.propertyRevision;
+		recipe.renderMode = source.renderMode;
 		const inputChanged = recipe.input !== source.map;
 		if (inputChanged) {
 			recipe.map?.dispose();
@@ -216,6 +190,37 @@ class AutomaticPasses {
 		}
 		return recipe;
 	}
+	private prepareOutline(recipe: Recipe): LilToonMaterial {
+		const source = recipe.source;
+		const outline = (recipe.outline ??= new LilToonMaterial({
+			pass: "outline",
+			renderMode: source.renderMode,
+			transparencyMode: source.transparencyMode,
+			shaderVariant: source.shaderVariant,
+			properties: source.lilToonProperties,
+			textures: source.lilToonTextures,
+		}));
+		// Kurasuai fork: copy only when the source's tracked revisions or selection moved
+		// (per-draw object/camera uniforms still refresh in onBeforeRender). The copy
+		// itself is upstream's value-snapshot sync.
+		if (
+			recipe.outlinePropertyRevision !== source.propertyRevision ||
+			recipe.outlineTextureRevision !== source.textureRevision ||
+			outline.renderMode !== source.renderMode ||
+			outline.transparencyMode !== source.transparencyMode ||
+			outline.shaderVariant !== source.shaderVariant
+		) {
+			syncPassMaterial(source, outline);
+			recipe.outlinePropertyRevision = source.propertyRevision;
+			recipe.outlineTextureRevision = source.textureRevision;
+		}
+		// Capture clock, tone mapping and queue change without a property revision.
+		outline.renderTimeSeconds = source.renderTimeSeconds;
+		outline.toneMapped = source.toneMapped;
+		outline.renderQueue = source.renderQueue;
+		outline.visible = source.visible;
+		return outline;
+	}
 	private prepareMesh(mesh: Mesh, undo: (() => void)[]): void {
 		const materials = Array.isArray(mesh.material)
 			? mesh.material
@@ -227,23 +232,23 @@ class AutomaticPasses {
 		);
 		const first = recipes.find((recipe) => recipe !== undefined);
 		if (!first) return;
-		const outlines = recipes.map((recipe) =>
-			recipe &&
-			recipe.source.renderMode !== "transparent" &&
-			isLilToonOutlineEnabled(
-				recipe.source.lilToonProperties,
-				recipe.source.shaderVariant,
-			) &&
-			Number(recipe.source.lilToonProperties._OutlineWidth ?? 0) > 0
-				? recipe.outline
-				: this.hidden,
-		);
 		// Legacy manually attached outlines are honored without generating a duplicate.
 		const manualOutline = mesh.children.some(
 			(child) =>
 				!helpers.has(child) &&
 				(child as Mesh).isMesh &&
 				((child as Mesh).material as LilToonMaterial)?.pass === "outline",
+		);
+		const outlines = recipes.map((recipe) =>
+			!manualOutline &&
+			recipe &&
+			recipe.source.renderMode !== "transparent" &&
+			isLilToonOutlineDrawn(
+				recipe.source.featureSet,
+				recipe.source.lilToonProperties,
+			)
+				? this.prepareOutline(recipe)
+				: this.hidden,
 		);
 		if (
 			!manualOutline &&
@@ -252,8 +257,8 @@ class AutomaticPasses {
 			let proxy = this.proxies.get(mesh);
 			if (!proxy) {
 				proxy = (mesh as SkinnedMesh).isSkinnedMesh
-					? new SkinnedMesh(mesh.geometry, first.outline)
-					: new Mesh(mesh.geometry, first.outline);
+					? new SkinnedMesh(mesh.geometry, this.hidden)
+					: new Mesh(mesh.geometry, this.hidden);
 				proxy.name = `${mesh.name}:lilToon-outline`;
 				proxy.matrixAutoUpdate = false;
 				proxy.raycast = () => {};
@@ -349,7 +354,8 @@ class AutomaticPasses {
 	prepare(scene: Object3D): () => void {
 		const undo: (() => void)[] = [];
 		const meshes: Mesh[] = [];
-		scene.traverse((node) => {
+		// Upstream 0.1.9: hidden subtrees are not drawn, so they get no helpers.
+		scene.traverseVisible((node) => {
 			if ((node as Mesh).isMesh && !helpers.has(node))
 				meshes.push(node as Mesh);
 		});
@@ -370,7 +376,8 @@ class AutomaticPasses {
 	): Promise<() => void> {
 		const undo: (() => void)[] = [];
 		const meshes: Mesh[] = [];
-		scene.traverse((node) => {
+		// Upstream 0.1.9: hidden subtrees are not drawn, so they get no helpers.
+		scene.traverseVisible((node) => {
 			if ((node as Mesh).isMesh && !helpers.has(node))
 				meshes.push(node as Mesh);
 		});
@@ -442,6 +449,7 @@ export interface LilToonProgramCompileSession {
 }
 
 type Installation = {
+	materialRenderQueue: boolean;
 	release(): void;
 	acquire(): () => void;
 	createSession(
@@ -644,10 +652,28 @@ export function createLilToonProgramCompileSession(
 	return installation.createSession(scene, camera, pacing);
 }
 
+export interface EnableLilToonOptions {
+	/** Own the renderer sort callbacks until final release; requires default sorters. */
+	materialRenderQueue?: boolean;
+}
+
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
-export function enableLilToon(renderer: WebGLRenderer): () => void {
+export function enableLilToon(
+	renderer: WebGLRenderer,
+	options: EnableLilToonOptions = {},
+): () => void {
 	const existing = installations.get(renderer);
-	if (existing) return existing.acquire();
+	if (existing) {
+		if (
+			options.materialRenderQueue !== undefined &&
+			options.materialRenderQueue !== existing.materialRenderQueue
+		)
+			throw new Error("enableLilToon leases must agree on materialRenderQueue");
+		return existing.acquire();
+	}
+	const sorting = options.materialRenderQueue
+		? installMaterialRenderQueue(renderer)
+		: undefined;
 	const passes = new AutomaticPasses();
 	const sceneColors = new SceneColorPasses();
 	const fur = new FurPasses();
@@ -660,9 +686,9 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		const restore: (() => void)[] = [];
 		try {
 			restore.push(passes.prepare(scene));
-			restore.push(sceneColors.prepare(renderer, scene, render));
+			restore.push(sceneColors.prepare(renderer, scene));
 			restore.push(fur.prepare(renderer, scene, render));
-			restore.push(transparency.prepare(renderer, scene, render));
+			restore.push(transparency.prepare(renderer, scene));
 		} catch (error) {
 			restore.reverse().forEach((undo) => undo());
 			throw error;
@@ -670,6 +696,7 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		return () => restore.reverse().forEach((undo) => undo());
 	};
 	const wrapped: WebGLRenderer["render"] = function (scene, camera) {
+		const restoreSortCamera = sorting?.enter(camera);
 		const previous = scene.onBeforeRender;
 		const original = originalHooks.get(previous) ?? previous;
 		let restore: (() => void) | undefined;
@@ -689,6 +716,7 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		} finally {
 			restore?.();
 			if (scene.onBeforeRender === hook) scene.onBeforeRender = previous;
+			restoreSortCamera?.();
 		}
 	};
 	const wrappedDispose = () => {
@@ -696,6 +724,7 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 		dispose.call(renderer);
 	};
 	const installation: Installation = {
+		materialRenderQueue: options.materialRenderQueue ?? false,
 		createSession: async (scene, camera, pacing) => {
 			// Recipe construction is the synchronous unit; pace() yields between
 			// meshes so precompilation does not stall the main thread in one task.
@@ -709,9 +738,9 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 			};
 			try {
 				restores.push(await passes.prepareAsync(scene, pace));
-				restores.push(sceneColors.prepare(renderer, scene, render));
+				restores.push(sceneColors.prepare(renderer, scene));
 				restores.push(fur.prepare(renderer, scene, render));
-				restores.push(transparency.prepare(renderer, scene, render));
+				restores.push(transparency.prepare(renderer, scene));
 			} catch (error) {
 				release();
 				throw error;
@@ -835,6 +864,7 @@ export function enableLilToon(renderer: WebGLRenderer): () => void {
 			disposed = true;
 			if (renderer.render === wrapped) renderer.render = render;
 			if (renderer.dispose === wrappedDispose) renderer.dispose = dispose;
+			sorting?.dispose();
 			passes.dispose();
 			sceneColors.dispose();
 			fur.dispose();

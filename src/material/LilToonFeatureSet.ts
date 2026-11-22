@@ -1,4 +1,13 @@
-import type { LilToonScalarOrVector } from "./LilToonMaterialParameters.js";
+import {
+	effectiveTransparency,
+	shaderVariants,
+	variantForModes,
+} from "./shaderVariants.js";
+import type {
+	LilToonRenderMode,
+	LilToonScalarOrVector,
+	LilToonTransparencyMode,
+} from "./LilToonMaterialParameters.js";
 
 export interface LilToonFeatureSet {
 	main2nd: boolean;
@@ -37,6 +46,8 @@ function colorVisible(value: LilToonScalarOrVector | undefined): boolean {
 export function detectLilToonFeatures(
 	properties: Record<string, LilToonScalarOrVector>,
 	shaderVariant?: string,
+	renderMode: LilToonRenderMode = "opaque",
+	transparencyMode: LilToonTransparencyMode = "normal",
 ): LilToonFeatureSet {
 	return {
 		main2nd: enabled(properties, "_UseMain2ndTex"),
@@ -55,11 +66,31 @@ export function detectLilToonFeatures(
 		reflection: enabled(properties, "_UseReflection"),
 		anisotropy: enabled(properties, "_UseAnisotropy"),
 		backlight: enabled(properties, "_UseBacklight"),
-		outline: isLilToonOutlineEnabled(properties, shaderVariant),
+		// Requested outline (shader name, or _UseOutline without one) is kept only where
+		// upstream's table has an outline pass for the modes (none for fur/gem/refraction).
+		outline:
+			shaderVariants[
+				variantForModes(
+					renderMode,
+					effectiveTransparency(renderMode, transparencyMode),
+					isLilToonOutlineEnabled(properties, shaderVariant),
+				)
+			][2],
 		dissolve:
 			Array.isArray(properties._DissolveParams) &&
 			Number(properties._DissolveParams[0]) !== 0,
 	};
+}
+
+/**
+ * Kurasuai fork: an enabled outline with zero width draws nothing, so its pass (and
+ * program) is skipped. Every outline draw and its precompile use this one condition.
+ */
+export function isLilToonOutlineDrawn(
+	featureSet: LilToonFeatureSet,
+	properties: Record<string, LilToonScalarOrVector>,
+): boolean {
+	return featureSet.outline && Number(properties._OutlineWidth ?? 0) > 0;
 }
 
 /**

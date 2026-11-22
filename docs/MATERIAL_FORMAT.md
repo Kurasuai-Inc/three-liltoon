@@ -9,6 +9,7 @@
 	"specVersion": "1.3",
 	"lilToonVersion": "2.3.1",
 	"renderMode": "opaque",
+	"transparencyMode": "normal",
 	"properties": {
 		"_Color": [0.91, 0.35, 0.48, 1],
 		"_UseShadow": 1,
@@ -21,7 +22,7 @@
 }
 ```
 
-`renderMode` is `opaque`, `cutout`, `transparent`, `refraction`, `refraction-blur`, `fur`, `fur-cutout`, `fur-two-pass`, or `gem`. Use `enableLilToon(renderer)` for automatic passes. Transparent also accepts `transparencyMode: "normal" | "one-pass" | "two-pass"`, defaulting to normal for standalone materials. Cloning and standalone JSON preserve this setting. Unknown properties remain available for round-tripping; active generated uniforms determine rendering.
+`renderMode` and `transparencyMode` select the passes (Kurasuai fork); `shaderVariant` optionally keeps the original Unity shader name and must agree with them. Materials without selection data default to opaque; older exports follow the compatibility rules below. Unknown material properties remain available for round-tripping; active generated uniforms determine rendering. Use `enableLilToon(renderer)` for additional passes. See [shader selection and outlines](API.md#shader-selection-and-outlines).
 
 ## glTF extension
 
@@ -36,8 +37,9 @@ Extension name: `MOCHIYA_materials_liltoon`.
 				"MOCHIYA_materials_liltoon": {
 					"specVersion": "1.3",
 					"lilToonVersion": "2.3.1",
-					"shaderVariant": "lilToon",
 					"renderMode": "opaque",
+					"transparencyMode": "normal",
+					"shaderVariant": "Hidden/lilToonOutline",
 					"properties": {
 						"_Color": [1, 1, 1, 1],
 						"_UseShadow": 1,
@@ -55,7 +57,11 @@ Extension name: `MOCHIYA_materials_liltoon`.
 }
 ```
 
-Each texture value may be a glTF texture index or an object with `index` and optional `texCoord`. The loader resolves `index`; it does not implement UV-channel remapping from `texCoord`. With `renderMode` omitted, it infers the mode from the Unity `shaderVariant` name, falling back to opaque. Explicit `renderMode` takes precedence. `transparencyMode` similarly uses the explicit value, a OnePass/TwoPass shader-name match, or normal. The loaded material retains `shaderVariant`: an Outline variant enables the outline pass even when `_UseOutline` is zero; Multi variants use `_UseOutline` as their selector. These shader-name rules apply to glTF loading and are preserved by the standalone material factory.
+Each texture value may be a glTF texture index or an object with `index` and optional `texCoord`. The loader resolves `index`; it does not implement UV-channel remapping from `texCoord`.
+
+Kurasuai fork: `renderMode` and `transparencyMode` are the authoritative selection and the fork writer always writes both. With `renderMode` omitted (older writers), the loader infers the mode from the Unity `shaderVariant` name, falling back to opaque; `transparencyMode` similarly uses the explicit value, a OnePass/TwoPass shader-name match, or normal. `shaderVariant` is optional: a name in the [supported table](API.md#supported-shader-variants) must select the same modes or loading throws `LilToonShaderVariantMismatchError`; other names are kept and reported as `unsupported-shader-variant`. An Outline name enables the outline pass even when `_UseOutline` is zero; without a name, or with a Multi name, `_UseOutline` selects it. `renderQueue` is optional and written only when held. The standalone material factory follows the same rules.
+
+The three-chara `.chara` format uses this extension at 1.3 with `renderMode` and `transparencyMode` required and without `renderQueue`; `CHARA_model.materialDrawOrder` is its single ordering source.
 
 Current extension version is `1.3`. Versions `1.0`, `1.1` and `1.2` remain readable. Embedded cubemaps require a reader supporting `cubeTextures`. Other versions warn and load best-effort.
 
@@ -65,19 +71,19 @@ Register the plugin on a particular `GLTFLoader`. Materials without the extensio
 
 This guide defines the extension's meaning; the annotated [TypeScript wire types](../src/loaders/types.ts) define its structure and generate the [Draft 7 JSON Schema](../schema/MOCHIYA_materials_liltoon.schema.json). Validate the object at `materials[i].extensions.MOCHIYA_materials_liltoon`, not the enclosing glTF or the standalone material JSON above.
 
-| Field              | Accepted value                                                                                                    | If omitted                                                      |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `specVersion`      | `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`                                                                                | Current version; reads 1.0/1.1/1.2                              |
-| `lilToonVersion`   | String or number; source metadata                                                                                 | Unspecified                                                     |
-| `shaderVariant`    | Original Unity shader name                                                                                        | Unspecified                                                     |
-| `renderMode`       | `opaque`, `cutout`, `transparent`, `refraction`, `refraction-blur`, `fur`, `fur-cutout`, `fur-two-pass`, or `gem` | Inferred from shader name                                       |
-| `transparencyMode` | `normal`, `one-pass`, `two-pass`                                                                                  | Transparent only; defaults to normal or inferred shader variant |
-| `properties`       | Original names mapped to numbers, booleans or numeric arrays                                                      | Shader defaults                                                 |
-| `textures`         | Original names mapped to nonnegative integer indices or `{ index, texCoord? }`                                    | Semantic default textures                                       |
+| Field            | Accepted value                                                                 | If omitted                         |
+| ---------------- | ------------------------------------------------------------------------------ | ---------------------------------- |
+| `specVersion`    | `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`                                             | Current version; reads 1.0/1.1/1.2 |
+| `lilToonVersion` | String or number; source metadata                                              | Unspecified                        |
+| `shaderVariant`  | Original Unity shader name; selects regular outline/pass configuration         | Unspecified                        |
+| `properties`     | Original names mapped to numbers, booleans or numeric arrays                   | Shader defaults                    |
+| `textures`       | Original names mapped to nonnegative integer indices or `{ index, texCoord? }` | Semantic default textures          |
 
 | `cubeTextures` | `_ReflectionCubeTex` mapped to a cubemap descriptor below | No authored cube |
 
 Colors and vectors use arrays; Three.js `Color`/`Vector` instances are constructor inputs only. Colors and gamma-adjusted scalar values are linear; HDR values may exceed 1. Texture transforms belong to each property's `<name>_ST` value. Texture indices address the enclosing glTF `textures` array; `texCoord` is a nonnegative integer and defaults to 0. The extension texture-info field does not select alternate UV channels; upstream material UV-mode properties are a separate shader mechanism.
+
+Resolved 2D textures must follow the [texture-orientation convention](ARCHITECTURE.md): material-owned views use `flipY = false`, regardless of the supplied texture flag.
 
 Property and texture names are open dictionaries, including names unsupported by the current renderer. Unknown fields outside those dictionaries are rejected by the authoring schema. The loader does not enforce this schema at runtime: version mismatches still warn and load on a best-effort basis. Structural validation cannot verify referenced textures exist, shader feature support, or visual parity. Keep standard glTF material fallback data and list the extension in `extensionsUsed` for unaware viewers.
 
@@ -130,3 +136,9 @@ Directions use glTF coordinates. Producers must convert their source coordinate 
 The loader creates a half-float `THREE.CubeTexture` in `LinearSRGBColorSpace` and uses identity `_ReflectionCubeTex_HDR` decoding. `_ReflectionCubeColor`, override and lighting controls retain their upstream meaning. Identical descriptors share one source cube within a file. The source appears in `parser.associations` for model resource inventory; the model owner must dispose it when unloading. Materials own their sampler views, not the shared source. Pixel arrays are independent of parser binary caches and remain available for context restoration.
 
 Standalone material JSON does not resolve these glTF buffer references: standalone callers provide a resolved `CubeTexture` through the normal material texture input. Generic glTF viewers can use the standard fallback material but do not reproduce these authored reflections. Cube RenderTextures, Unity probe blending and PMREM/equirectangular conversion are outside this transport contract.
+
+## Material render queues
+
+Optional `renderQueue` is an integer from 0 through 5000 containing the effective Unity material queue (including the shader default). It is independent of shader selection, blending and `_ZWrite`: a transparent shader can have queue 2450. The loader preserves the value without changing those states. Standalone material JSON uses the same field.
+
+Enable queue-aware sorting with `enableLilToon(renderer, { materialRenderQueue: true })`; see [sorter ownership and limitations](API.md#material-render-queue-sorting). Lower queues draw earlier within each Three render list, after group/object ordering. Missing queues use 2000 in the opaque list and 3000 in transparent/transmissive lists, including ordinary Three materials. Legacy files without queue information retain the existing relative ordering. Queue metadata requires a compatible reader and renderer opt-in; it cannot be reconstructed from older exports.

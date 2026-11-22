@@ -1,13 +1,73 @@
-import { S as SerializedLilToonMaterial, L as LilToonMaterial, a as LilToonGlobalUniforms, b as LilToonMaterialParameters } from './gltf-DAuXvw6Z.js';
-export { c as LILTOON_GLTF_EXTENSION, d as LILTOON_GLTF_SPEC_VERSION, e as LilToonFeatureSet, f as LilToonMaterialLoader, g as LilToonRenderMode, h as LilToonScalarOrVector, i as LilToonTransparencyMode, j as detectLilToonFeatures } from './gltf-DAuXvw6Z.js';
-import { WebGLRenderer, Object3D, Camera, Texture, Scene, DirectionalLight, Vector3, Color, Vector4 } from 'three';
-export { a as GLTFLilToonExtension, G as GLTFLilToonExtensionOptions, L as LilToonWarning, b as LilToonWarningCode } from './GLTFLilToonExtension-Da4AOnBM.js';
+import { S as SerializedLilToonMaterial, L as LilToonMaterial, a as LilToonGlobalUniforms, b as LilToonMaterialParameters } from './gltf-CclUmD3d.js';
+export { c as LILTOON_GLTF_EXTENSION, d as LILTOON_GLTF_SPEC_VERSION, e as LilToonFeatureSet, f as LilToonMaterialLoader, g as LilToonRenderMode, h as LilToonScalarOrVector, i as LilToonShaderVariant, j as LilToonShaderVariantMismatchError, k as LilToonTransparencyMode, l as detectLilToonFeatures } from './gltf-CclUmD3d.js';
+import { WebGLRenderer, Object3D, Camera, Texture, Scene, DirectionalLight, Vector3, Color, Vector4, Material } from 'three';
+import { L as LilToonTaskPacing } from './GLTFLilToonExtension-CSCk4cIj.js';
+export { a as GLTFLilToonExtension, G as GLTFLilToonExtensionOptions, b as LilToonWarning, c as LilToonWarningCode } from './GLTFLilToonExtension-CSCk4cIj.js';
 import 'three/examples/jsm/loaders/GLTFLoader.js';
 
+/**
+ * A paced lilToon program compile in progress. Create one with
+ * {@link createLilToonProgramCompileSession}, then drive one GL program
+ * submission per {@link submitNext} call so callers can give each program its
+ * own task instead of compiling an entire scene in one synchronous sweep.
+ */
+interface LilToonProgramCompileSession {
+    /** Renderable units whose programs have not been submitted yet. */
+    readonly pending: number;
+    /** True once every unit has been submitted to the GL. */
+    readonly submitted: boolean;
+    /**
+     * Submit the next unit's program. Returns false once nothing is left, so
+     * `while (session.submitNext())` drains the session. Each call issues at
+     * most one material's compile/link for a single renderable.
+     */
+    submitNext(): boolean;
+    /**
+     * Submit the texture uploads for the session's scenes. Call this while
+     * async program compilation is still in flight. Idempotent.
+     */
+    prepareTextures(): void;
+    /**
+     * Upload one pending texture for the session's scenes. Texture uploads are
+     * synchronous with the driver and can dominate a task when run all at once
+     * on drivers such as ANGLE D3D11, so callers that pace work call this
+     * between tasks after {@link submitNext}. Shares its pending list with
+     * {@link prepareTextures}; returns false once every stale view is uploaded.
+     */
+    prepareNextTexture(): boolean;
+    /**
+     * Resolve once every submitted program reports ready through
+     * KHR_parallel_shader_compile (or immediately when the extension is
+     * unavailable, matching WebGLRenderer.compileAsync()).
+     */
+    settle(): Promise<void>;
+    /**
+     * Run one renderer program's first-use queries (the LINK_STATUS wait and
+     * uniform/attribute enumeration three.js defers until the first draw).
+     * Drivers that defer link work until first use, e.g. ANGLE D3D11, charge
+     * every program's finalization to the render task unless the queries run
+     * earlier. Call between tasks after {@link settle}; returns false once
+     * every program in the renderer's list has been finalized.
+     */
+    finalizeNext(): boolean;
+    /** Undo the pass hooks installed while compiling. Idempotent. */
+    release(): void;
+}
 /** Compile the lilToon variants currently selected for a scene before its first draw. */
-declare function compileLilToonAsync(renderer: WebGLRenderer, scene: Object3D, camera: Camera): Promise<void>;
+declare function compileLilToonAsync(renderer: WebGLRenderer, scene: Object3D, camera: Camera, pacing?: LilToonTaskPacing): Promise<void>;
+/**
+ * Start a lilToon program compile that submits one program per
+ * {@link LilToonProgramCompileSession.submitNext} call, so a caller can spread
+ * the GL submissions across tasks instead of running the full scene's
+ * compile/link sweep inside one synchronous block.
+ */
+declare function createLilToonProgramCompileSession(renderer: WebGLRenderer, scene: Object3D, camera: Camera, pacing?: LilToonTaskPacing): Promise<LilToonProgramCompileSession>;
+interface EnableLilToonOptions {
+    /** Own the renderer sort callbacks until final release; requires default sorters. */
+    materialRenderQueue?: boolean;
+}
 /** Install automatic passes on an existing renderer. Release the returned lease on teardown. */
-declare function enableLilToon(renderer: WebGLRenderer): () => void;
+declare function enableLilToon(renderer: WebGLRenderer, options?: EnableLilToonOptions): () => void;
 
 declare class LilToonMaterialFactory {
     create(source: SerializedLilToonMaterial, textures?: Record<string, Texture | null>): LilToonMaterial;
@@ -43,17 +103,17 @@ declare class LilToonEnvironmentAdapter {
     bind(scene: Scene, globals: LilToonGlobalUniforms): Texture | null;
 }
 
-/** @deprecated Use LilToonMaterial with renderMode: "refraction" and enableLilToon(renderer). */
+/** @deprecated Use LilToonMaterial with shaderVariant: "Hidden/lilToonRefraction" and enableLilToon(renderer). */
 declare class RefractionPass extends LilToonMaterial {
     constructor(parameters?: Omit<LilToonMaterialParameters, "renderMode" | "pass">);
 }
 
-/** @deprecated Use LilToonMaterial with renderMode: "gem" and enableLilToon(renderer). */
+/** @deprecated Use LilToonMaterial with shaderVariant: "Hidden/lilToonGem" and enableLilToon(renderer). */
 declare class GemPass extends LilToonMaterial {
     constructor(parameters?: Omit<LilToonMaterialParameters, "renderMode" | "pass">);
 }
 
-/** @deprecated Use LilToonMaterial with renderMode: "fur" and enableLilToon(renderer). */
+/** @deprecated Use LilToonMaterial with shaderVariant: "Hidden/lilToonFur" and enableLilToon(renderer). */
 declare class FurPass extends LilToonMaterial {
     constructor(parameters?: Omit<LilToonMaterialParameters, "renderMode" | "pass">);
 }
@@ -5634,4 +5694,7 @@ declare const LILTOON_TEXTURE_SEMANTICS: {
     readonly _FurVectorTex: "normal";
 };
 
-export { FurPass, GemPass, LILTOON_DEFAULTS, LILTOON_PROPERTIES, LILTOON_RENDER_RECIPES, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonMaterialFactory, LilToonMaterialParameters, LilToonShadowAdapter, type LilToonTextureSemantic, RefractionPass, SerializedLilToonMaterial, THREE_VERSION_RANGE, UnsupportedFeatureError, compileLilToonAsync, enableLilToon };
+/** Compare authored queues only. Apply host group/renderOrder precedence first. */
+declare function compareLilToonRenderQueue(a: Material, b: Material, defaultQueue: number): number;
+
+export { type EnableLilToonOptions, FurPass, GemPass, LILTOON_DEFAULTS, LILTOON_PROPERTIES, LILTOON_RENDER_RECIPES, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonMaterialFactory, LilToonMaterialParameters, type LilToonProgramCompileSession, LilToonShadowAdapter, LilToonTaskPacing, type LilToonTextureSemantic, RefractionPass, SerializedLilToonMaterial, THREE_VERSION_RANGE, UnsupportedFeatureError, compareLilToonRenderQueue, compileLilToonAsync, createLilToonProgramCompileSession, enableLilToon };

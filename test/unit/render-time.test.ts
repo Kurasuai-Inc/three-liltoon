@@ -11,7 +11,7 @@ import {
 	type WebGLRenderer,
 } from "three";
 import { LilToonMaterial } from "../../src/material/LilToonMaterial.js";
-import { syncPassMaterial } from "../../src/renderer/AuxiliaryPassDraw.js";
+import { syncPassMaterial } from "../../src/renderer/syncPassMaterial.js";
 import { uniformSnapshot } from "../helpers/uniform-snapshot.js";
 
 afterEach(() => vi.restoreAllMocks());

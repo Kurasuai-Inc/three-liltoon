@@ -18,7 +18,7 @@ vi.mock("../../src/shader/ShaderProgramLibrary.js", () => {
 	const makeProgram = (key: string, textures?: Record<string, unknown>) => ({
 		key,
 		vertexShader: "in vec4 position;\nvoid main() { gl_Position = position; }",
-		fragmentShader: "void main() {}",
+		fragmentShader: "struct type_Globals\n{\n};\nvoid main() {}",
 		samplerBindings: textures?._MainTex
 			? new Map([["u_MainTex", "_MainTex"]])
 			: new Map(),
@@ -197,6 +197,17 @@ describe("compileLilToonAsync", () => {
 				);
 			});
 		});
+		// Upstream 0.1.9 draws the transparent prepass and outline inline.
+		(
+			renderer as unknown as { renderBufferDirect: unknown }
+		).renderBufferDirect = (
+			_camera: unknown,
+			_scene: unknown,
+			_geometry: unknown,
+			auxiliary: LilToonMaterial,
+		) => {
+			drawnKeys.push(programSignature(auxiliary));
+		};
 		const compileAsync = vi.fn(
 			async (
 				target: Scene,

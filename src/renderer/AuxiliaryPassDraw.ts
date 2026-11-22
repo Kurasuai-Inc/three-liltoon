@@ -3,41 +3,14 @@ import {
 	Mesh,
 	SkinnedMesh,
 	Scene,
-	Vector4,
 	type Camera,
 	type WebGLRenderer,
 	type Object3D,
 } from "three";
 import { LilToonMaterial } from "../material/LilToonMaterial.js";
 import type { LilToonPass } from "../material/LilToonMaterialParameters.js";
-import { setGlobalProperty } from "./LilToonUniformBinder.js";
-import { applyLilToonPassState } from "../utils/renderState.js";
+import { syncPassMaterial } from "./syncPassMaterial.js";
 import { ownsPassSource } from "./passOwnership.js";
-
-export function syncPassMaterial(
-	source: LilToonMaterial,
-	target: LilToonMaterial,
-) {
-	source.getProperty("_Color");
-	// Capture time changes independently of shader/property revisions.
-	target.renderTimeSeconds = source.renderTimeSeconds;
-	target.renderMode = source.renderMode;
-	target.transparencyMode = source.transparencyMode;
-	for (const [key, value] of Object.entries(source.lilToonProperties)) {
-		target.lilToonProperties[key] = value;
-		setGlobalProperty(target.globalUniforms, key, value);
-	}
-	target.setProperty("_Color", source.getProperty("_Color")!);
-	for (const [key, value] of Object.entries(source.lilToonTextures))
-		if (target.lilToonTextures[key] !== value) target.setTexture(key, value);
-	applyLilToonPassState(
-		target,
-		source.renderMode,
-		source.lilToonProperties,
-		target.pass,
-		target.propertyRevision,
-	);
-}
 
 /** Cached pass proxy. Borrows source geometry, including Three's morph texture. */
 interface AuxiliaryRecipe {
@@ -72,6 +45,8 @@ export class AuxiliaryPassDraw {
 					r.release();
 		}
 	}
+	// Kurasuai fork: recipe lookup is shared by draw() and prepareForCompile() so the
+	// precompile uses the exact proxy material and unlit scene of the later draw.
 	private recipe(
 		mesh: Mesh,
 		source: LilToonMaterial,
@@ -93,6 +68,8 @@ export class AuxiliaryPassDraw {
 				sourceGeometry = mesh.geometry;
 			const material = new LilToonMaterial({
 				renderMode: source.renderMode,
+				transparencyMode: source.transparencyMode,
+				shaderVariant: source.shaderVariant,
 				pass,
 				properties: source.lilToonProperties,
 				textures: source.lilToonTextures,
@@ -133,7 +110,8 @@ export class AuxiliaryPassDraw {
 	private syncProxy(r: AuxiliaryRecipe): void {
 		const { mesh, source, material, proxy } = r;
 		syncPassMaterial(source, material);
-		proxy.matrix.copy(mesh.matrixWorld);
+		// No nested render updates world matrices; the proxy draws in the enclosing render.
+		proxy.matrixWorld.copy(mesh.matrixWorld);
 		proxy.layers.mask = mesh.layers.mask;
 		proxy.morphTargetInfluences = mesh.morphTargetInfluences;
 		if ((proxy as SkinnedMesh).isSkinnedMesh) {
@@ -145,7 +123,7 @@ export class AuxiliaryPassDraw {
 			out.bindMatrixInverse.copy(skin.bindMatrixInverse);
 		}
 	}
-	/** Compile in the same unlit temporary scene used by the nested draw. */
+	/** Compile against the same unlit temporary scene passed to renderBufferDirect by draw(). */
 	prepareForCompile(
 		mesh: Mesh,
 		source: LilToonMaterial,
@@ -158,7 +136,6 @@ export class AuxiliaryPassDraw {
 	}
 	draw(
 		renderer: WebGLRenderer,
-		render: WebGLRenderer["render"],
 		mesh: Mesh,
 		source: LilToonMaterial,
 		pass: LilToonPass,
@@ -170,53 +147,31 @@ export class AuxiliaryPassDraw {
 		const r = this.recipe(mesh, source, pass, scene);
 		this.syncProxy(r);
 		const { geometry, material, proxy } = r;
-		const { start: originalStart, count: originalCount } = geometry.drawRange;
-		const start = Math.max(originalStart, group?.start ?? 0);
-		const count = Math.max(
-			0,
-			Math.min(
-				originalStart + originalCount,
-				group ? group.start + group.count : Infinity,
-			) - start,
+		// The source was uploaded during the enclosing render-list collection.
+		// Draw in that invocation: a nested render would resolve the entire MSAA
+		// target after each small auxiliary pass. Three intersects group/drawRange.
+		proxy.modelViewMatrix.multiplyMatrices(
+			camera.matrixWorldInverse,
+			proxy.matrixWorld,
 		);
-		const before = material.onBeforeRender;
-		material.onBeforeRender = (
+		proxy.normalMatrix.getNormalMatrix(proxy.modelViewMatrix);
+		material.onBeforeRender(
 			renderer,
-			_scene,
+			scene,
 			camera,
 			geometry,
-			object,
-			group,
-		) => {
-			before.call(material, renderer, scene, camera, geometry, object, group);
-			configure?.(material);
-		};
-		const auto = renderer.autoClear,
-			info = renderer.info.autoReset,
-			shadows = renderer.shadowMap.autoUpdate,
-			needs = renderer.shadowMap.needsUpdate;
-		const viewport = renderer.getViewport(new Vector4()),
-			scissor = renderer.getScissor(new Vector4()),
-			scissorTest = renderer.getScissorTest();
-		try {
-			renderer.autoClear = false;
-			renderer.info.autoReset = false;
-			renderer.shadowMap.autoUpdate = false;
-			renderer.shadowMap.needsUpdate = false;
-			// A single-material proxy ignores source groups; narrow only this nested draw.
-			geometry.setDrawRange(start, count);
-			render.call(renderer, r.scene, camera);
-		} finally {
-			geometry.setDrawRange(originalStart, originalCount);
-			material.onBeforeRender = before;
-			renderer.autoClear = auto;
-			renderer.info.autoReset = info;
-			renderer.shadowMap.autoUpdate = shadows;
-			renderer.shadowMap.needsUpdate = needs;
-			renderer.setViewport(viewport);
-			renderer.setScissor(scissor);
-			renderer.setScissorTest(scissorTest);
-		}
+			proxy,
+			group as never,
+		);
+		configure?.(material);
+		renderer.renderBufferDirect(
+			camera,
+			r.scene,
+			geometry,
+			material,
+			proxy,
+			group as never,
+		);
 	}
 	dispose() {
 		for (const r of this.recipes.values()) r.release();

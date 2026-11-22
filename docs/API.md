@@ -17,7 +17,7 @@ The root entry also exports `LILTOON_TEXTURE_SEMANTICS` and `LilToonTextureSeman
 
 ## Materials
 
-`LilToonMaterial` extends Three.js `RawShaderMaterial`. Constructor inputs include `name`, `color`, `opacity`, `map`, `alphaTest`, `renderMode`, `transparencyMode`, `properties` and `textures`. Original property names are case-sensitive. Render mode defaults to opaque; transparent configuration defaults to normal. See [rendering modes](RENDERING_MODES.md) for valid values and authored render-state defaults.
+`LilToonMaterial` extends Three.js `RawShaderMaterial`. Constructor inputs include `name`, `color`, `opacity`, `map`, `alphaTest`, `renderMode`, `transparencyMode`, `shaderVariant`, `renderQueue`, `properties` and `textures`. Original property names are case-sensitive. Selection defaults to `renderMode: "opaque"` without outlines. See [shader selection and outlines](#shader-selection-and-outlines).
 
 | Familiar property               | Original lilToon value                                         |
 | ------------------------------- | -------------------------------------------------------------- |
@@ -46,6 +46,71 @@ Feature toggles and texture changes automatically specialize shaders; ordinary n
 Exported models already carry their authored properties. The README's illustrative material preset is not a required override for loaded assets.
 
 For standalone JSON, `LilToonMaterialLoader` loads properties but does not resolve texture identifiers. Resolve textures yourself and pass a property-name-to-Texture map to `new LilToonMaterialFactory().create(serialized, textures)`. Prefer GLTFLoader for exported GLB/VRM models. See [material format](MATERIAL_FORMAT.md).
+
+## Tone mapping and output color
+
+`LilToonMaterial` honors `renderer.toneMapping`, `renderer.toneMappingExposure`, `renderer.outputColorSpace` and `material.toneMapped` during direct rendering. Supported display spaces are `SRGBColorSpace` and `LinearSRGBColorSpace`. Built-in tone curves come from the installed Three.js peer. These settings update on each draw without a lilToon-specific output API; generated outlines and auxiliary materials inherit the source material's `toneMapped` setting.
+
+Ordinary render targets receive linear shading output without material tone mapping, matching standard Three materials. Floating-point targets preserve HDR values; an sRGB attachment uses framebuffer storage encoding. For post-processing, use the composer's normal final tone-mapping/output stage, such as Three's `OutputPass`, exactly once. A global final tone mapper affects the composed scene, including materials with `toneMapped = false`; that flag cannot exclude individual objects after composition. This limitation also applies to standard Three materials.
+
+Ordinary transparent shaders handle output conversion before the final premultiplication used for blending. Direct framebuffer blending can still differ from linear offscreen blending, as it does for standard materials. Applications requiring stable colors when toggling optional effects should retain the same linear scene buffer and final output stage in both cases.
+
+Refraction and Gem sample the current framebuffer. Use linear scene composition with a final display transform for these modes when tone mapping is enabled: a direct-screen capture cannot recover linear HDR values from a background that has already been tone-mapped.
+
+The material remains a `RawShaderMaterial`: this integration does not automatically enable arbitrary Three shader chunks, physical-material properties, WebGPU, Display-P3 output or XR compatibility. Custom tone-mapping chunk replacement is not a supported configuration API. Bloom, blur and other screen effects remain host/composer operations. Existing lilToon properties, loaders and `enableLilToon(renderer)` usage are unchanged.
+
+## Shader selection and outlines
+
+Kurasuai fork: `renderMode` and `transparencyMode` are the authoritative selection (upstream 0.1.9 made `shaderVariant` authoritative). Passes are chosen from upstream's shader table below through `variantForModes(renderMode, transparencyMode, outline)`; `material.passVariant` reports the selected entry. This applies when constructing a material, loading glTF/VRM, and restoring standalone JSON.
+
+```ts
+const material = new LilToonMaterial({
+	renderMode: "cutout",
+	shaderVariant: "Hidden/lilToonCutoutOutline",
+	properties: { _OutlineWidth: 0.03, _OutlineColor: [0, 0, 0, 1] },
+});
+// Switch the whole selection at once; the name must agree with the modes.
+material.setPassSelection("cutout", "normal", "Hidden/lilToonCutout");
+```
+
+`shaderVariant` is the optional original Unity shader name. A recognised name must select the same modes, otherwise construction or assignment throws `LilToonShaderVariantMismatchError`. Unknown names (for example the Multi family) are kept as metadata. An outline is requested by a name ending in `Outline`, or, without a name or with a Multi name, by `_UseOutline`; it is drawn only where the table has an outline variant for the modes (never for refraction, fur or gem) and `_OutlineWidth` is above zero.
+
+Call `enableLilToon(renderer)` to draw the additional passes. Ordinary and skinned meshes use the same outline implementation; morph targets and skinning follow the source mesh. `_Outline*` properties control the authored pass.
+
+`alphaTest` retains its Three.js convenience behavior of switching ordinary opaque/cutout/transparent modes; a recognised `shaderVariant` is renamed to the table entry of the new modes with its outline flag. The glTF loader infers missing modes from the shader name (older writers), and reports names outside the table through its warning callback.
+
+Shader selection does not replace authored pass state. Blend factors and equations, culling, depth state and material queue remain independent, including custom blending on ordinary opaque shaders.
+
+Cloning, copying and `toLilToonJSON()` preserve the modes, `shaderVariant` and `renderQueue`; the writer always writes the modes and writes the optional fields only when held. `detectLilToonFeatures(properties, shaderVariant, renderMode, transparencyMode)` applies the same outline rule.
+
+### Supported shader variants
+
+| Surface configuration | Without outline                    | With outline                              |
+| --------------------- | ---------------------------------- | ----------------------------------------- |
+| Opaque                | `lilToon`                          | `Hidden/lilToonOutline`                   |
+| Cutout                | `Hidden/lilToonCutout`             | `Hidden/lilToonCutoutOutline`             |
+| Transparent Normal    | `Hidden/lilToonTransparent`        | `Hidden/lilToonTransparentOutline`        |
+| Transparent OnePass   | `Hidden/lilToonOnePassTransparent` | `Hidden/lilToonOnePassTransparentOutline` |
+| Transparent TwoPass   | `Hidden/lilToonTwoPassTransparent` | `Hidden/lilToonTwoPassTransparentOutline` |
+
+| `shaderVariant`                | Behavior                                                             |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `Hidden/lilToonRefraction`     | Scene-color capture and refraction                                   |
+| `Hidden/lilToonRefractionBlur` | Horizontal blur, a second capture, then vertical blur and refraction |
+| `Hidden/lilToonFur`            | Surface and transparent fur ribbons                                  |
+| `Hidden/lilToonFurCutout`      | Alpha-tested surface and fur ribbons                                 |
+| `Hidden/lilToonFurTwoPass`     | Surface, fur prepass and transparent ribbons                         |
+| `Hidden/lilToonGem`            | Scene-color capture, black prepass and gem surface                   |
+
+These six variants (`renderMode` `refraction`, `refraction-blur`, `fur`, `fur-cutout`, `fur-two-pass` and `gem`) have no regular outline pass. See the [feature matrix](FEATURE_MATRIX.md) for fidelity limits and unsupported families.
+
+### Shader pass behavior
+
+`Hidden/lilToonTransparent` and `Hidden/lilToonOnePassTransparent` currently share their surface/outline sequence because additional-light passes are deferred; their shader identities remain distinct. `Hidden/lilToonTwoPassTransparent` draws a prepass using `_Pre*` state before the surface. Each corresponding outline variant draws its outline after the surface using `_Outline*` state. These sequences apply per material group and follow skinning and morph deformation. Three's implicit double-sided split is disabled.
+
+Transparent variants use upstream ShaderLab defaults, including `_ZWrite: 1` and `_SrcBlend: 1`; authored properties override them. The upstream FORWARD_BACK pass uses configurable `_PreCull` rather than always culling front faces. `Hidden/lilToonFurCutout` uses the glTF alpha-mask fallback when exported without extension-aware rendering.
+
+Refraction, fur and gem variants require the additional passes installed by `enableLilToon(renderer)`. See [special shader passes](ARCHITECTURE.md#special-shader-passes) for capture, deformation, device requirements and implementation limits.
 
 ## Renderer lifetime and React Three Fiber
 
@@ -76,7 +141,7 @@ Remove models from the scene and dispose their owned geometries, materials and t
 - The first visible directional light is the main light. Ambient lights contribute to SH L0, and hemisphere lights contribute directional first-order SH; additional Unity light passes are unavailable.
 - Set renderer shadow support, the light's `castShadow`, and mesh `castShadow`/`receiveShadow` as in Three.js. This is approximate shadow integration, separate from `_UseShadow` toon-band shading.
 - `scene.environment` supports a `CubeTexture`; raw equirectangular textures and private PMREM state are not consumed.
-- Standard surfaces use Three GPU skinning and position/normal morph transport. Device limits still apply; fur has a separate deformation path described in [rendering modes](RENDERING_MODES.md).
+- Standard surfaces use Three GPU skinning and position/normal morph transport. Device limits still apply; fur has a separate deformation path described in [special shader passes](ARCHITECTURE.md#special-shader-passes).
 - Shader UV/time animation uses the material's rendering path; skeletal animation, VRMA retargeting and avatar updates remain host responsibilities.
 
 ## VRM material expressions
@@ -113,4 +178,30 @@ Texture-unit capacity is checked against vertex, fragment and combined context l
 
 ## Compatibility exports
 
-Low-level light/shadow/environment adapters remain exported, but ordinary applications need only the renderer and loader helpers. `RefractionPass`, `FurPass` and `GemPass` are deprecated material conveniences; use `LilToonMaterial({ renderMode })` with `enableLilToon` instead. Internal pass identifiers are not additional user-facing rendering modes.
+Low-level light/shadow/environment adapters remain exported, but ordinary applications need only the renderer and loader helpers. `RefractionPass`, `FurPass` and `GemPass` are deprecated material conveniences; use `LilToonMaterial({ shaderVariant })` with `enableLilToon` instead. Internal pass identifiers are not additional user-facing rendering modes.
+
+## Material render queue sorting
+
+`LilToonMaterial.renderQueue` and its optional constructor option accept integers 0–5000 or `undefined`. The value survives copy, clone, standalone JSON and glTF loading. Changing it affects the next render without shader recompilation. It does not alter blending, transparency classification or depth writes.
+
+```ts
+const release = enableLilToon(renderer, { materialRenderQueue: true });
+const inner = new LilToonMaterial({
+	shaderVariant: "Hidden/lilToonTransparent",
+	renderQueue: 2450,
+});
+const outer = new LilToonMaterial({
+	shaderVariant: "Hidden/lilToonTransparent",
+	renderQueue: 3000,
+});
+// Release when this renderer integration is no longer needed.
+release();
+```
+
+Keep `renderer.sortObjects` enabled. The opt-in owns `setOpaqueSort` and `setTransparentSort` until the final renderer lease is released; renderer disposal releases it too. Use it only with the renderer's default sort callbacks, and do not replace those callbacks while it is active. Teardown restores Three's default sorting. Three exposes no public sorter getters, so unknown pre-existing custom callbacks cannot be captured/restored automatically. Calls sharing an installation inherit its sorting setting when omitted; explicitly conflicting settings throw. The one-argument enable call does not install queue sorting.
+
+Ordering is groupOrder, object renderOrder, material queue, then Three's ordinary within-list material/depth/stable-ID ordering. Material groups are compared individually. Missing queue values use 2000 for opaque draws and 3000 for transparent/transmissive draws. Automatic outlines inherit the queue; pre/surface/post auxiliary passes retain their existing scheduling. Queues stay ascending with supported reversed-depth rendering; Three's own group/object precedence remains peer-defined.
+
+Hosts owning custom sorting can leave this opt-in disabled and call `compareLilToonRenderQueue(a.material, b.material, defaultQueue)` inside their own comparator, after host group/renderOrder priorities and before depth comparison. This helper compares only queues, treats ordinary materials as the supplied default and installs no callbacks. Hosts must account for their peer's reversed-depth list reversal themselves.
+
+Opaque, transmissive and transparent lists remain separate. Queue values do not move materials between them. This is not arbitrary Unity cross-list ordering, Unity's queue-dependent within-queue sorting, triangle sorting or order-independent transparency. Preserve appropriate authoring/pass strategies for intersecting transparent surfaces.

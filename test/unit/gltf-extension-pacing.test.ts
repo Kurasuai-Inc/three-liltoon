@@ -5,7 +5,7 @@ vi.mock("../../src/shader/ShaderProgramLibrary.js", () => ({
 	getLilToonShaderProgram: (mode: string) => ({
 		key: `forward:${mode}`,
 		vertexShader: "in vec4 position;\nvoid main() { gl_Position = position; }",
-		fragmentShader: "void main() {}",
+		fragmentShader: "struct type_Globals\n{\n};\nvoid main() {}",
 		samplerBindings: new Map(),
 		resources: [],
 	}),
@@ -16,7 +16,7 @@ vi.mock("../../src/shader/ShaderProgramLibrary.js", () => ({
 	) => ({
 		key: `outline:${mode}`,
 		vertexShader: "in vec4 position;\nvoid main() { gl_Position = position; }",
-		fragmentShader: "void main() {}",
+		fragmentShader: "struct type_Globals\n{\n};\nvoid main() {}",
 		samplerBindings: new Map(),
 		resources: [],
 	}),

@@ -1,6 +1,8 @@
 import {
 	Mesh,
+	MeshBasicMaterial,
 	Scene,
+	type BufferGeometry,
 	type Object3D,
 	type Texture,
 	type WebGLRenderer,
@@ -8,29 +10,9 @@ import {
 import { LilToonMaterial } from "../material/LilToonMaterial.js";
 import { FurDeformation } from "./FurDeformation.js";
 import type { SkinnedMesh } from "three";
-import type { LilToonScalarOrVector } from "../material/LilToonMaterialParameters.js";
 import { FurGeometry } from "./FurGeometry.js";
-import { applyLilToonPassState } from "../utils/renderState.js";
+import { syncPassMaterial } from "./syncPassMaterial.js";
 import { ownsPassSource } from "./passOwnership.js";
-
-function sameProperty(
-	value: LilToonScalarOrVector,
-	previous: LilToonScalarOrVector | undefined,
-): boolean {
-	if (Array.isArray(value))
-		return (
-			Array.isArray(previous) &&
-			value.length === previous.length &&
-			value.every((v, i) => v === previous[i])
-		);
-	if (typeof value === "object")
-		return (
-			previous !== undefined &&
-			value.constructor === previous.constructor &&
-			value.equals(previous as never)
-		);
-	return value === previous;
-}
 
 /** Fur follows its owning surface draw, including the renderer's transparent ordering. */
 export class FurPasses {
@@ -54,6 +36,12 @@ export class FurPasses {
 		}
 	>();
 	private depth = 0;
+	private uploaded = new WeakSet<BufferGeometry>();
+	private uploadMaterial = new MeshBasicMaterial({ visible: false });
+	private contextCanvas?: HTMLCanvasElement;
+	private readonly contextRestored = () => {
+		this.uploaded = new WeakSet();
+	};
 	/** Texture views bound by derived fur pass materials created for prepared sources. */
 	collectDerivedTextureViews(views: Set<Texture>): void {
 		for (const recipe of this.recipes.values()) {
@@ -98,6 +86,13 @@ export class FurPasses {
 					source.pass !== "forward"
 				)
 					return;
+				if (!this.contextCanvas) {
+					this.contextCanvas = renderer.domElement;
+					this.contextCanvas.addEventListener(
+						"webglcontextrestored",
+						this.contextRestored,
+					);
+				}
 				const layers = Number(source.lilToonProperties._FurLayerNum ?? 2);
 				if (
 					(mesh.geometry.index?.count ??
@@ -142,6 +137,8 @@ export class FurPasses {
 						(pass) =>
 							new LilToonMaterial({
 								renderMode: source.renderMode,
+								transparencyMode: source.transparencyMode,
+								shaderVariant: source.shaderVariant,
 								pass,
 								properties: source.lilToonProperties,
 								textures: source.lilToonTextures,
@@ -197,35 +194,7 @@ export class FurPasses {
 					geometry.texture,
 					args[2],
 				);
-				source.getProperty("_Color");
-				for (const material of materials) {
-					let changed = false;
-					for (const key in source.lilToonProperties) {
-						const value = source.lilToonProperties[key]!;
-						const previous = material.lilToonProperties[key];
-						if (!sameProperty(value, previous)) {
-							material.setProperty(
-								key,
-								Array.isArray(value) ? [...value] : value,
-							);
-							changed = true;
-						}
-					}
-					for (const key of new Set([
-						...Object.keys(source.lilToonTextures),
-						...Object.keys(material.lilToonTextures),
-					]))
-						if (material.lilToonTextures[key] !== source.lilToonTextures[key])
-							material.setTexture(key, source.lilToonTextures[key] ?? null);
-					if (changed)
-						applyLilToonPassState(
-							material,
-							source.renderMode,
-							source.lilToonProperties,
-							material.pass,
-							material.propertyRevision,
-						);
-				}
+				for (const material of materials) syncPassMaterial(source, material);
 				const group =
 					(args[5] as unknown as { start: number; count: number } | null) ??
 					mesh.geometry.drawRange;
@@ -259,31 +228,43 @@ export class FurPasses {
 					renderer.info.autoReset = false;
 					renderer.shadowMap.autoUpdate = false;
 					renderer.shadowMap.needsUpdate = false;
+					if (!this.uploaded.has(geometry.geometry)) {
+						// Generated ribbons are created after the source's render-list upload.
+						// Let Three register their immutable buffers once, without a draw.
+						// Repeat after context restoration; ordinary frames draw inline.
+						proxy.material = this.uploadMaterial;
+						render.call(renderer, temporary, args[2]);
+						this.uploaded.add(geometry.geometry);
+					}
+					proxy.matrixWorld.copy(mesh.matrixWorld);
+					proxy.modelViewMatrix.multiplyMatrices(
+						args[2].matrixWorldInverse,
+						proxy.matrixWorld,
+					);
+					proxy.normalMatrix.getNormalMatrix(proxy.modelViewMatrix);
 					for (const material of materials) {
 						proxy.material = material;
-						const before = material.onBeforeRender;
-						material.onBeforeRender = (...draw) => {
-							before.call(
-								material,
-								draw[0],
-								scene as Scene,
-								draw[2],
-								draw[3],
-								draw[4],
-								draw[5],
-							);
-
-							// Morphs were packed at source indices, not ribbon indices.
-							material.setSystemTexture(
-								"__furVertices",
-								deformation?.target.texture ?? geometry.texture,
-							);
-						};
-						try {
-							render.call(renderer, temporary, args[2]);
-						} finally {
-							material.onBeforeRender = before;
-						}
+						material.onBeforeRender(
+							renderer,
+							scene as Scene,
+							args[2],
+							geometry.geometry,
+							proxy,
+							null as never,
+						);
+						// Morphs were packed at source indices, not ribbon indices.
+						material.setSystemTexture(
+							"__furVertices",
+							deformation?.target.texture ?? geometry.texture,
+						);
+						renderer.renderBufferDirect(
+							args[2],
+							temporary,
+							geometry.geometry,
+							material,
+							proxy,
+							null as never,
+						);
 					}
 				} finally {
 					renderer.autoClear = auto;
@@ -316,6 +297,13 @@ export class FurPasses {
 		};
 	}
 	dispose() {
+		this.contextCanvas?.removeEventListener(
+			"webglcontextrestored",
+			this.contextRestored,
+		);
+		this.contextCanvas = undefined;
+		this.uploaded = new WeakSet();
+		this.uploadMaterial.dispose();
 		for (const recipe of this.recipes.values()) recipe.release();
 	}
 }

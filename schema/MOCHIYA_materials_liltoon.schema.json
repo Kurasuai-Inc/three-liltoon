@@ -26,11 +26,17 @@
         },
         "shaderVariant": {
           "type": "string",
-          "description": "Original Unity shader name; retained for render-mode inference and Outline/Multi semantics, not full shader support."
+          "description": "Original Unity shader name; retained for render-mode inference when renderMode is absent and for Outline/Multi semantics. A recognised name must agree with renderMode/transparencyMode."
+        },
+        "renderQueue": {
+          "type": "integer",
+          "description": "Effective Unity material queue. Does not change blending or depth state.",
+          "minimum": 0,
+          "maximum": 5000
         },
         "renderMode": {
           "$ref": "#/definitions/LilToonRenderMode",
-          "description": "When omitted, inferred from the original supported shader family."
+          "description": "Authoritative pass selection; the fork writer always writes it. When omitted (older writers), inferred from the original supported shader family."
         },
         "transparencyMode": {
           "$ref": "#/definitions/LilToonTransparencyMode",

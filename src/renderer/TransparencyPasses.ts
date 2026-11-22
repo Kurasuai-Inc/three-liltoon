@@ -5,13 +5,13 @@ import {
 	type WebGLRenderer,
 } from "three";
 import { LilToonMaterial } from "../material/LilToonMaterial.js";
-import { isLilToonOutlineEnabled } from "../material/LilToonFeatureSet.js";
+import { isLilToonOutlineDrawn } from "../material/LilToonFeatureSet.js";
 import { AuxiliaryPassDraw } from "./AuxiliaryPassDraw.js";
 
 /** Unity surface pass order, excluding deferred ForwardAdd and shadow parity. */
 export class TransparencyPasses {
 	private draws = new AuxiliaryPassDraw();
-	/** Return the exact unlit scenes used by the nested transparent draws. */
+	/** Return the exact unlit scenes passed to renderBufferDirect by the transparent auxiliary draws. */
 	async prepareForCompile(
 		scene: Object3D,
 		pace: () => Promise<void>,
@@ -48,11 +48,7 @@ export class TransparencyPasses {
 					);
 				if (
 					!manualOutline &&
-					isLilToonOutlineEnabled(
-						material.lilToonProperties,
-						material.shaderVariant,
-					) &&
-					Number(material.lilToonProperties._OutlineWidth ?? 0) > 0
+					isLilToonOutlineDrawn(material.featureSet, material.lilToonProperties)
 				)
 					scenes.push(
 						this.draws.prepareForCompile(
@@ -67,11 +63,7 @@ export class TransparencyPasses {
 		}
 		return scenes;
 	}
-	prepare(
-		renderer: WebGLRenderer,
-		scene: Object3D,
-		render: WebGLRenderer["render"],
-	) {
+	prepare(renderer: WebGLRenderer, scene: Object3D) {
 		this.draws.begin();
 		const undo: (() => void)[] = [];
 		scene.traverse((node) => {
@@ -101,7 +93,6 @@ export class TransparencyPasses {
 				if (isSurface(source) && source.transparencyMode === "two-pass")
 					this.draws.draw(
 						renderer,
-						render,
 						mesh,
 						source,
 						"transparent-pre",
@@ -121,15 +112,10 @@ export class TransparencyPasses {
 				if (
 					isSurface(source) &&
 					!manual &&
-					isLilToonOutlineEnabled(
-						source.lilToonProperties,
-						source.shaderVariant,
-					) &&
-					Number(source.lilToonProperties._OutlineWidth ?? 0) > 0
+					isLilToonOutlineDrawn(source.featureSet, source.lilToonProperties)
 				)
 					this.draws.draw(
 						renderer,
-						render,
 						mesh,
 						source,
 						"outline",

@@ -190,51 +190,47 @@ export function applyLilToonRenderState(
 	material.transparent = !["opaque", "cutout", "fur-cutout"].includes(
 		renderMode,
 	);
-	if (material.transparent) {
-		material.blending = CustomBlending;
-		material.blendSrc = mapped(
-			blendFactorMap as Record<string | number, Material["blendSrc"]>,
-			(properties._SrcBlend as Mappable) ?? 5,
-			SrcAlphaFactor,
-		);
-		material.blendDst = mapped(
-			blendFactorMap as unknown as Record<
-				string | number,
-				Material["blendDst"]
-			>,
-			(properties._DstBlend as Mappable) ?? 10,
-			OneMinusSrcAlphaFactor,
-		);
-		material.blendEquation = mapped(
-			equationMap as Record<string | number, Material["blendEquation"]>,
-			(properties._BlendOp as Mappable) ?? 0,
-			AddEquation,
-		);
-		material.blendSrcAlpha = mapped(
-			blendFactorMap as Record<
-				string | number,
-				NonNullable<Material["blendSrcAlpha"]>
-			>,
-			(properties._SrcBlendAlpha as Mappable) ?? 1,
-			OneFactor,
-		);
-		material.blendDstAlpha = mapped(
-			blendFactorMap as unknown as Record<
-				string | number,
-				NonNullable<Material["blendDstAlpha"]>
-			>,
-			(properties._DstBlendAlpha as Mappable) ?? 10,
-			OneMinusSrcAlphaFactor,
-		);
-		material.blendEquationAlpha = mapped(
-			equationMap as Record<
-				string | number,
-				NonNullable<Material["blendEquationAlpha"]>
-			>,
-			(properties._BlendOpAlpha as Mappable) ?? 0,
-			AddEquation,
-		);
-	}
+	// ShaderLab blending is independent of shader family and render-list classification.
+	material.blending = CustomBlending;
+	material.blendSrc = mapped(
+		blendFactorMap as Record<string | number, Material["blendSrc"]>,
+		(properties._SrcBlend as Mappable) ?? (material.transparent ? 5 : 1),
+		SrcAlphaFactor,
+	);
+	material.blendDst = mapped(
+		blendFactorMap as unknown as Record<string | number, Material["blendDst"]>,
+		(properties._DstBlend as Mappable) ?? (material.transparent ? 10 : 0),
+		OneMinusSrcAlphaFactor,
+	);
+	material.blendEquation = mapped(
+		equationMap as Record<string | number, Material["blendEquation"]>,
+		(properties._BlendOp as Mappable) ?? 0,
+		AddEquation,
+	);
+	material.blendSrcAlpha = mapped(
+		blendFactorMap as Record<
+			string | number,
+			NonNullable<Material["blendSrcAlpha"]>
+		>,
+		(properties._SrcBlendAlpha as Mappable) ?? 1,
+		OneFactor,
+	);
+	material.blendDstAlpha = mapped(
+		blendFactorMap as unknown as Record<
+			string | number,
+			NonNullable<Material["blendDstAlpha"]>
+		>,
+		(properties._DstBlendAlpha as Mappable) ?? (material.transparent ? 10 : 0),
+		OneMinusSrcAlphaFactor,
+	);
+	material.blendEquationAlpha = mapped(
+		equationMap as Record<
+			string | number,
+			NonNullable<Material["blendEquationAlpha"]>
+		>,
+		(properties._BlendOpAlpha as Mappable) ?? 0,
+		AddEquation,
+	);
 	material.stencilWrite =
 		numeric(properties, "_StencilRef", 0) !== 0 ||
 		numeric(properties, "_StencilWriteMask", 255) !== 255;
@@ -295,6 +291,37 @@ type AppliedPassState = {
 const appliedPassStates = new WeakMap<Material, AppliedPassState>();
 
 /** ShaderLab pass-local state overrides; properties retain their original shader names. */
+const stateProperties = [
+	"_Cull",
+	"_ZWrite",
+	"_ZTest",
+	"_SrcBlend",
+	"_DstBlend",
+	"_BlendOp",
+	"_SrcBlendAlpha",
+	"_DstBlendAlpha",
+	"_BlendOpAlpha",
+	"_StencilRef",
+	"_StencilReadMask",
+	"_StencilWriteMask",
+	"_StencilComp",
+	"_StencilFail",
+	"_StencilZFail",
+	"_StencilPass",
+	"_OffsetFactor",
+	"_OffsetUnits",
+	"_ColorMask",
+	"_AlphaToMask",
+] as const;
+const statePropertyNames = new Set(
+	["", "Outline", "Pre", "Fur"].flatMap((prefix) =>
+		stateProperties.map((name) => `_${prefix}${name.slice(1)}`),
+	),
+);
+export function isRenderStateProperty(name: string): boolean {
+	return statePropertyNames.has(name);
+}
+
 export function applyLilToonPassState(
 	material: Material,
 	mode: LilToonRenderMode,
@@ -311,7 +338,9 @@ export function applyLilToonPassState(
 	)
 		return;
 
-	const mappedProperties = { ...properties };
+	// Upstream 0.1.9: a prototype-chained view instead of a full copy; pass overrides
+	// are own properties and every reader below indexes by name.
+	const mappedProperties: Record<string, unknown> = Object.create(properties);
 	const prefix =
 		pass === "outline"
 			? "_Outline"
@@ -321,9 +350,10 @@ export function applyLilToonPassState(
 					? "_Fur"
 					: "";
 	if (prefix)
-		for (const [key, value] of Object.entries(properties)) {
-			if (key.startsWith(prefix))
-				mappedProperties[`_${key.slice(prefix.length)}`] = value;
+		for (const key of stateProperties) {
+			const source = `${prefix}${key.slice(1)}`;
+			if (Object.hasOwn(properties, source))
+				mappedProperties[key] = properties[source];
 		}
 	if (pass === "fur-pre")
 		Object.assign(mappedProperties, {

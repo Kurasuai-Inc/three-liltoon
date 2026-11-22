@@ -26,7 +26,7 @@ Enabled assigned inputs are not removed by a texture-priority profile. Actual pe
 
 ## Rendering modes
 
-All nine regular selector modes have implementations; their pass sequences and defaults are detailed in [Rendering modes](RENDERING_MODES.md).
+Pass configurations and their Unity shader names are listed in the [API reference](API.md#supported-shader-variants). Kurasuai fork: `renderMode`/`transparencyMode` select them; `shaderVariant` is optional and must agree. The three-chara `.chara` format uses lilToon 1.3 with the modes required and without `renderQueue` (`CHARA_model.materialDrawOrder` is its single ordering source).
 
 | Unity mode or setting             | Status      | Behavior and limits                                                                                                                                                                    |
 | --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -36,7 +36,7 @@ All nine regular selector modes have implementations; their pass sequences and d
 | Refraction / Refraction Blur      | Limited     | Named scene-color capture; blur adds horizontal blur, a second capture and vertical blur/refraction. Three sorting differs from Unity queues                                           |
 | Fur / Fur (Cutout) / Fur (2 pass) | Limited     | Upstream ribbon equations and shading; GPU skinning preparation where supported, cached CPU morphs and CPU fallback. No fur shadow silhouette or collision/light interaction           |
 | Gem                               | Limited     | Scene capture, black prepass and upstream gem shading; Unity fog/probe behavior is not reproduced                                                                                      |
-| Outline                           | Limited     | Additional draw following source skinning/morphs; mode-specific alpha and transparent outline state. Not a separate rendering mode                                                     |
+| Outline                           | Limited     | Outline-suffixed shader name, or `_UseOutline` without a name; drawn where the modes have an outline variant and `_OutlineWidth` > 0; follows geometry and mode-specific alpha/state.  |
 
 Optional families such as Lite, Multi, FurOnly, tessellation, overlay and FakeShadow do not have dedicated equivalent implementations. A supported regular mode does not imply support for every upstream shader family with a similar name.
 

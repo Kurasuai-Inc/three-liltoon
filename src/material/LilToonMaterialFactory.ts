@@ -10,6 +10,7 @@ export class LilToonMaterialFactory {
 		return new LilToonMaterial({
 			renderMode: source.renderMode,
 			shaderVariant: source.shaderVariant,
+			renderQueue: source.renderQueue,
 			transparencyMode: source.transparencyMode,
 			properties: source.properties,
 			textures,

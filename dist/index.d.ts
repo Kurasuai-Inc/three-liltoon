@@ -3298,6 +3298,355 @@ declare const LILTOON_PROPERTIES: readonly [{
     readonly defaultValue: 0;
     readonly attributes: readonly [];
 }, {
+    readonly name: "_OutlineCull";
+    readonly displayName: "sCullModes";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["lilEnum"];
+}, {
+    readonly name: "_OutlineSrcBlend";
+    readonly displayName: "sSrcBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineDstBlend";
+    readonly displayName: "sDstBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineSrcBlendAlpha";
+    readonly displayName: "sSrcBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineDstBlendAlpha";
+    readonly displayName: "sDstBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 10;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineBlendOp";
+    readonly displayName: "sBlendOpRGB";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_OutlineBlendOpAlpha";
+    readonly displayName: "sBlendOpAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_OutlineSrcBlendFA";
+    readonly displayName: "sSrcBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineDstBlendFA";
+    readonly displayName: "sDstBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineSrcBlendAlphaFA";
+    readonly displayName: "sSrcBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineDstBlendAlphaFA";
+    readonly displayName: "sDstBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_OutlineBlendOpFA";
+    readonly displayName: "sBlendOpRGB";
+    readonly type: "Int";
+    readonly defaultValue: 4;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_OutlineBlendOpAlphaFA";
+    readonly displayName: "sBlendOpAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 4;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_OutlineZClip";
+    readonly displayName: "sZClip";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["lilToggle"];
+}, {
+    readonly name: "_OutlineZWrite";
+    readonly displayName: "sZWrite";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["lilToggle"];
+}, {
+    readonly name: "_OutlineZTest";
+    readonly displayName: "sZTest";
+    readonly type: "Int";
+    readonly defaultValue: 2;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.CompareFunction)"];
+}, {
+    readonly name: "_OutlineStencilRef";
+    readonly displayName: "Ref";
+    readonly type: "Range";
+    readonly range: readonly [0, 255];
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["IntRange"];
+}, {
+    readonly name: "_OutlineStencilReadMask";
+    readonly displayName: "ReadMask";
+    readonly type: "Range";
+    readonly range: readonly [0, 255];
+    readonly defaultValue: 255;
+    readonly attributes: readonly ["IntRange"];
+}, {
+    readonly name: "_OutlineStencilWriteMask";
+    readonly displayName: "WriteMask";
+    readonly type: "Range";
+    readonly range: readonly [0, 255];
+    readonly defaultValue: 255;
+    readonly attributes: readonly ["IntRange"];
+}, {
+    readonly name: "_OutlineStencilComp";
+    readonly displayName: "Comp";
+    readonly type: "Float";
+    readonly defaultValue: 8;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.CompareFunction)"];
+}, {
+    readonly name: "_OutlineStencilPass";
+    readonly displayName: "Pass";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
+}, {
+    readonly name: "_OutlineStencilFail";
+    readonly displayName: "Fail";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
+}, {
+    readonly name: "_OutlineStencilZFail";
+    readonly displayName: "ZFail";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
+}, {
+    readonly name: "_OutlineOffsetFactor";
+    readonly displayName: "sOffsetFactor";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly [];
+}, {
+    readonly name: "_OutlineOffsetUnits";
+    readonly displayName: "sOffsetUnits";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly [];
+}, {
+    readonly name: "_OutlineColorMask";
+    readonly displayName: "sColorMask";
+    readonly type: "Int";
+    readonly defaultValue: 15;
+    readonly attributes: readonly ["lilColorMask"];
+}, {
+    readonly name: "_OutlineAlphaToMask";
+    readonly displayName: "sAlphaToMask";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["lilToggle"];
+}, {
+    readonly name: "_PreColor";
+    readonly displayName: "sColor";
+    readonly type: "Color";
+    readonly defaultValue: readonly [1, 1, 1, 1];
+    readonly attributes: readonly ["lilHDR", "MainColor"];
+}, {
+    readonly name: "_PreOutType";
+    readonly displayName: "sPreOutTypes";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["lilEnum"];
+}, {
+    readonly name: "_PreCutoff";
+    readonly displayName: "Pre Cutoff";
+    readonly type: "Range";
+    readonly range: readonly [-0.001, 1.001];
+    readonly defaultValue: 0.5;
+    readonly attributes: readonly [];
+}, {
+    readonly name: "_PreCull";
+    readonly displayName: "Cull Mode|Off|Front|Back";
+    readonly type: "Int";
+    readonly defaultValue: 2;
+    readonly attributes: readonly ["lilEnum"];
+}, {
+    readonly name: "_PreSrcBlend";
+    readonly displayName: "sSrcBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreDstBlend";
+    readonly displayName: "sDstBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 10;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreSrcBlendAlpha";
+    readonly displayName: "sSrcBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreDstBlendAlpha";
+    readonly displayName: "sDstBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 10;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreBlendOp";
+    readonly displayName: "sBlendOpRGB";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_PreBlendOpAlpha";
+    readonly displayName: "sBlendOpAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_PreSrcBlendFA";
+    readonly displayName: "sSrcBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreDstBlendFA";
+    readonly displayName: "sDstBlendRGB";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreSrcBlendAlphaFA";
+    readonly displayName: "sSrcBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreDstBlendAlphaFA";
+    readonly displayName: "sDstBlendAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
+}, {
+    readonly name: "_PreBlendOpFA";
+    readonly displayName: "sBlendOpRGB";
+    readonly type: "Int";
+    readonly defaultValue: 4;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_PreBlendOpAlphaFA";
+    readonly displayName: "sBlendOpAlpha";
+    readonly type: "Int";
+    readonly defaultValue: 4;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
+}, {
+    readonly name: "_PreZClip";
+    readonly displayName: "sZClip";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["lilToggle"];
+}, {
+    readonly name: "_PreZWrite";
+    readonly displayName: "sZWrite";
+    readonly type: "Int";
+    readonly defaultValue: 1;
+    readonly attributes: readonly ["lilToggle"];
+}, {
+    readonly name: "_PreZTest";
+    readonly displayName: "sZTest";
+    readonly type: "Int";
+    readonly defaultValue: 4;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.CompareFunction)"];
+}, {
+    readonly name: "_PreStencilRef";
+    readonly displayName: "Ref";
+    readonly type: "Range";
+    readonly range: readonly [0, 255];
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["IntRange"];
+}, {
+    readonly name: "_PreStencilReadMask";
+    readonly displayName: "ReadMask";
+    readonly type: "Range";
+    readonly range: readonly [0, 255];
+    readonly defaultValue: 255;
+    readonly attributes: readonly ["IntRange"];
+}, {
+    readonly name: "_PreStencilWriteMask";
+    readonly displayName: "WriteMask";
+    readonly type: "Range";
+    readonly range: readonly [0, 255];
+    readonly defaultValue: 255;
+    readonly attributes: readonly ["IntRange"];
+}, {
+    readonly name: "_PreStencilComp";
+    readonly displayName: "Comp";
+    readonly type: "Float";
+    readonly defaultValue: 8;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.CompareFunction)"];
+}, {
+    readonly name: "_PreStencilPass";
+    readonly displayName: "Pass";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
+}, {
+    readonly name: "_PreStencilFail";
+    readonly displayName: "Fail";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
+}, {
+    readonly name: "_PreStencilZFail";
+    readonly displayName: "ZFail";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
+}, {
+    readonly name: "_PreOffsetFactor";
+    readonly displayName: "sOffsetFactor";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly [];
+}, {
+    readonly name: "_PreOffsetUnits";
+    readonly displayName: "sOffsetUnits";
+    readonly type: "Float";
+    readonly defaultValue: 0;
+    readonly attributes: readonly [];
+}, {
+    readonly name: "_PreColorMask";
+    readonly displayName: "sColorMask";
+    readonly type: "Int";
+    readonly defaultValue: 15;
+    readonly attributes: readonly ["lilColorMask"];
+}, {
+    readonly name: "_PreAlphaToMask";
+    readonly displayName: "sAlphaToMask";
+    readonly type: "Int";
+    readonly defaultValue: 0;
+    readonly attributes: readonly ["lilToggle"];
+}, {
     readonly name: "_RefractionStrength";
     readonly displayName: "sStrength";
     readonly type: "Range";
@@ -3644,171 +3993,6 @@ declare const LILTOON_PROPERTIES: readonly [{
     readonly range: readonly [0, 1];
     readonly defaultValue: 1;
     readonly attributes: readonly [];
-}, {
-    readonly name: "_OutlineCull";
-    readonly displayName: "sCullModes";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["lilEnum"];
-}, {
-    readonly name: "_OutlineSrcBlend";
-    readonly displayName: "sSrcBlendRGB";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineDstBlend";
-    readonly displayName: "sDstBlendRGB";
-    readonly type: "Int";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineSrcBlendAlpha";
-    readonly displayName: "sSrcBlendAlpha";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineDstBlendAlpha";
-    readonly displayName: "sDstBlendAlpha";
-    readonly type: "Int";
-    readonly defaultValue: 10;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineBlendOp";
-    readonly displayName: "sBlendOpRGB";
-    readonly type: "Int";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
-}, {
-    readonly name: "_OutlineBlendOpAlpha";
-    readonly displayName: "sBlendOpAlpha";
-    readonly type: "Int";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
-}, {
-    readonly name: "_OutlineSrcBlendFA";
-    readonly displayName: "sSrcBlendRGB";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineDstBlendFA";
-    readonly displayName: "sDstBlendRGB";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineSrcBlendAlphaFA";
-    readonly displayName: "sSrcBlendAlpha";
-    readonly type: "Int";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineDstBlendAlphaFA";
-    readonly displayName: "sDstBlendAlpha";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendMode)"];
-}, {
-    readonly name: "_OutlineBlendOpFA";
-    readonly displayName: "sBlendOpRGB";
-    readonly type: "Int";
-    readonly defaultValue: 4;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
-}, {
-    readonly name: "_OutlineBlendOpAlphaFA";
-    readonly displayName: "sBlendOpAlpha";
-    readonly type: "Int";
-    readonly defaultValue: 4;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.BlendOp)"];
-}, {
-    readonly name: "_OutlineZClip";
-    readonly displayName: "sZClip";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["lilToggle"];
-}, {
-    readonly name: "_OutlineZWrite";
-    readonly displayName: "sZWrite";
-    readonly type: "Int";
-    readonly defaultValue: 1;
-    readonly attributes: readonly ["lilToggle"];
-}, {
-    readonly name: "_OutlineZTest";
-    readonly displayName: "sZTest";
-    readonly type: "Int";
-    readonly defaultValue: 2;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.CompareFunction)"];
-}, {
-    readonly name: "_OutlineStencilRef";
-    readonly displayName: "Ref";
-    readonly type: "Range";
-    readonly range: readonly [0, 255];
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["IntRange"];
-}, {
-    readonly name: "_OutlineStencilReadMask";
-    readonly displayName: "ReadMask";
-    readonly type: "Range";
-    readonly range: readonly [0, 255];
-    readonly defaultValue: 255;
-    readonly attributes: readonly ["IntRange"];
-}, {
-    readonly name: "_OutlineStencilWriteMask";
-    readonly displayName: "WriteMask";
-    readonly type: "Range";
-    readonly range: readonly [0, 255];
-    readonly defaultValue: 255;
-    readonly attributes: readonly ["IntRange"];
-}, {
-    readonly name: "_OutlineStencilComp";
-    readonly displayName: "Comp";
-    readonly type: "Float";
-    readonly defaultValue: 8;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.CompareFunction)"];
-}, {
-    readonly name: "_OutlineStencilPass";
-    readonly displayName: "Pass";
-    readonly type: "Float";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
-}, {
-    readonly name: "_OutlineStencilFail";
-    readonly displayName: "Fail";
-    readonly type: "Float";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
-}, {
-    readonly name: "_OutlineStencilZFail";
-    readonly displayName: "ZFail";
-    readonly type: "Float";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["Enum(UnityEngine.Rendering.StencilOp)"];
-}, {
-    readonly name: "_OutlineOffsetFactor";
-    readonly displayName: "sOffsetFactor";
-    readonly type: "Float";
-    readonly defaultValue: 0;
-    readonly attributes: readonly [];
-}, {
-    readonly name: "_OutlineOffsetUnits";
-    readonly displayName: "sOffsetUnits";
-    readonly type: "Float";
-    readonly defaultValue: 0;
-    readonly attributes: readonly [];
-}, {
-    readonly name: "_OutlineColorMask";
-    readonly displayName: "sColorMask";
-    readonly type: "Int";
-    readonly defaultValue: 15;
-    readonly attributes: readonly ["lilColorMask"];
-}, {
-    readonly name: "_OutlineAlphaToMask";
-    readonly displayName: "sAlphaToMask";
-    readonly type: "Int";
-    readonly defaultValue: 0;
-    readonly attributes: readonly ["lilToggle"];
 }];
 
 declare const LILTOON_DEFAULTS: {
@@ -4416,6 +4600,63 @@ declare const LILTOON_DEFAULTS: {
     readonly _ColorMask: 15;
     readonly _AlphaToMask: 0;
     readonly _lilShadowCasterBias: 0;
+    readonly _OutlineCull: 1;
+    readonly _OutlineSrcBlend: 1;
+    readonly _OutlineDstBlend: 0;
+    readonly _OutlineSrcBlendAlpha: 1;
+    readonly _OutlineDstBlendAlpha: 10;
+    readonly _OutlineBlendOp: 0;
+    readonly _OutlineBlendOpAlpha: 0;
+    readonly _OutlineSrcBlendFA: 1;
+    readonly _OutlineDstBlendFA: 1;
+    readonly _OutlineSrcBlendAlphaFA: 0;
+    readonly _OutlineDstBlendAlphaFA: 1;
+    readonly _OutlineBlendOpFA: 4;
+    readonly _OutlineBlendOpAlphaFA: 4;
+    readonly _OutlineZClip: 1;
+    readonly _OutlineZWrite: 1;
+    readonly _OutlineZTest: 2;
+    readonly _OutlineStencilRef: 0;
+    readonly _OutlineStencilReadMask: 255;
+    readonly _OutlineStencilWriteMask: 255;
+    readonly _OutlineStencilComp: 8;
+    readonly _OutlineStencilPass: 0;
+    readonly _OutlineStencilFail: 0;
+    readonly _OutlineStencilZFail: 0;
+    readonly _OutlineOffsetFactor: 0;
+    readonly _OutlineOffsetUnits: 0;
+    readonly _OutlineColorMask: 15;
+    readonly _OutlineAlphaToMask: 0;
+    readonly _PreColor: readonly [1, 1, 1, 1];
+    readonly _PreOutType: 0;
+    readonly _PreCutoff: 0.5;
+    readonly _PreCull: 2;
+    readonly _PreSrcBlend: 1;
+    readonly _PreDstBlend: 10;
+    readonly _PreSrcBlendAlpha: 1;
+    readonly _PreDstBlendAlpha: 10;
+    readonly _PreBlendOp: 0;
+    readonly _PreBlendOpAlpha: 0;
+    readonly _PreSrcBlendFA: 1;
+    readonly _PreDstBlendFA: 1;
+    readonly _PreSrcBlendAlphaFA: 0;
+    readonly _PreDstBlendAlphaFA: 1;
+    readonly _PreBlendOpFA: 4;
+    readonly _PreBlendOpAlphaFA: 4;
+    readonly _PreZClip: 1;
+    readonly _PreZWrite: 1;
+    readonly _PreZTest: 4;
+    readonly _PreStencilRef: 0;
+    readonly _PreStencilReadMask: 255;
+    readonly _PreStencilWriteMask: 255;
+    readonly _PreStencilComp: 8;
+    readonly _PreStencilPass: 0;
+    readonly _PreStencilFail: 0;
+    readonly _PreStencilZFail: 0;
+    readonly _PreOffsetFactor: 0;
+    readonly _PreOffsetUnits: 0;
+    readonly _PreColorMask: 15;
+    readonly _PreAlphaToMask: 0;
     readonly _RefractionStrength: 0.5;
     readonly _RefractionFresnelPower: 1;
     readonly _RefractionColorFromMain: 0;
@@ -4478,33 +4719,6 @@ declare const LILTOON_DEFAULTS: {
     readonly _GemParticleLoop: 8;
     readonly _GemParticleColor: readonly [4, 4, 4, 1];
     readonly _GemVRParallaxStrength: 1;
-    readonly _OutlineCull: 1;
-    readonly _OutlineSrcBlend: 1;
-    readonly _OutlineDstBlend: 0;
-    readonly _OutlineSrcBlendAlpha: 1;
-    readonly _OutlineDstBlendAlpha: 10;
-    readonly _OutlineBlendOp: 0;
-    readonly _OutlineBlendOpAlpha: 0;
-    readonly _OutlineSrcBlendFA: 1;
-    readonly _OutlineDstBlendFA: 1;
-    readonly _OutlineSrcBlendAlphaFA: 0;
-    readonly _OutlineDstBlendAlphaFA: 1;
-    readonly _OutlineBlendOpFA: 4;
-    readonly _OutlineBlendOpAlphaFA: 4;
-    readonly _OutlineZClip: 1;
-    readonly _OutlineZWrite: 1;
-    readonly _OutlineZTest: 2;
-    readonly _OutlineStencilRef: 0;
-    readonly _OutlineStencilReadMask: 255;
-    readonly _OutlineStencilWriteMask: 255;
-    readonly _OutlineStencilComp: 8;
-    readonly _OutlineStencilPass: 0;
-    readonly _OutlineStencilFail: 0;
-    readonly _OutlineStencilZFail: 0;
-    readonly _OutlineOffsetFactor: 0;
-    readonly _OutlineOffsetUnits: 0;
-    readonly _OutlineColorMask: 15;
-    readonly _OutlineAlphaToMask: 0;
 };
 
 declare const LILTOON_RENDER_RECIPES: {

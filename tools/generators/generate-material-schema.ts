@@ -13,6 +13,8 @@ const parsed = parseShaderLab(
 	readFileSync(resolve(LILTOON_SHADER, "lts.shader"), "utf8"),
 );
 const extra = [
+	// The opaque shader does not declare the transparent pre-pass properties.
+	"lts_trans.shader",
 	"lts_ref.shader",
 	"lts_ref_blur.shader",
 	"lts_fur.shader",
@@ -122,7 +124,7 @@ const version = execFileSync(
 ).trim();
 
 const banner =
-	"// Generated from vendor/lilToon/Assets/lilToon/Shader/lts.shader. Do not edit.\n";
+	"// Generated from the ShaderLab property declarations in vendor/lilToon/Assets/lilToon/Shader. Do not edit.\n";
 mkdirSync(GENERATED_SOURCE_ROOT, { recursive: true });
 writeFileSync(
 	resolve(GENERATED_SOURCE_ROOT, "properties.ts"),

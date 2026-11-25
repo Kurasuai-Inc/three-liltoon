@@ -1,6 +1,6 @@
-export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-SHYDV2VU.js';
-import { LilToonMaterial, createTaskPace, isLilToonOutlineDrawn, prepareLilToonMaterialProgram, setGlobalProperty, isRenderStateProperty, applyLilToonPassState } from './chunk-M5SHKQUQ.js';
-export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShaderVariantMismatchError, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-M5SHKQUQ.js';
+export { LilToonMaterialFactory, LilToonMaterialLoader } from './chunk-OSYWR2H3.js';
+import { LilToonMaterial, createTaskPace, isLilToonOutlineDrawn, prepareLilToonMaterialProgram, setGlobalProperty, isRenderStateProperty, applyLilToonPassState } from './chunk-Y77J6DAE.js';
+export { GLTFLilToonExtension, LILTOON_DEFAULTS, LILTOON_GLTF_EXTENSION, LILTOON_GLTF_SPEC_VERSION, LILTOON_TEXTURE_SEMANTICS, LILTOON_UPSTREAM_COMMIT, LILTOON_UPSTREAM_VERSION, LilToonEnvironmentAdapter, LilToonLightAdapter, LilToonMaterial, LilToonShaderVariantMismatchError, LilToonShadowAdapter, THREE_VERSION_RANGE, UnsupportedFeatureError, detectLilToonFeatures } from './chunk-Y77J6DAE.js';
 import { MeshBasicMaterial, MeshDepthMaterial, RGBADepthPacking, MeshDistanceMaterial, SkinnedMesh, Mesh, OneFactor, ZeroFactor, CustomBlending, Scene, SRGBColorSpace, REVISION, Vector2, UnsignedByteType, NoColorSpace, WebGLRenderTarget, NearestFilter, FramebufferTexture, Vector4, DataTexture, RGBAFormat, FloatType, Float32BufferAttribute, Uint32BufferAttribute, BufferGeometry, Vector3, Matrix4, RawShaderMaterial, GLSL3, PlaneGeometry } from 'three';
 
 function queue(material, defaultQueue) {
@@ -6970,6 +6970,543 @@ var LILTOON_PROPERTIES = [
     "attributes": []
   },
   {
+    "name": "_OutlineCull",
+    "displayName": "sCullModes",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "lilEnum"
+    ]
+  },
+  {
+    "name": "_OutlineSrcBlend",
+    "displayName": "sSrcBlendRGB",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineDstBlend",
+    "displayName": "sDstBlendRGB",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineSrcBlendAlpha",
+    "displayName": "sSrcBlendAlpha",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineDstBlendAlpha",
+    "displayName": "sDstBlendAlpha",
+    "type": "Int",
+    "defaultValue": 10,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineBlendOp",
+    "displayName": "sBlendOpRGB",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_OutlineBlendOpAlpha",
+    "displayName": "sBlendOpAlpha",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_OutlineSrcBlendFA",
+    "displayName": "sSrcBlendRGB",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineDstBlendFA",
+    "displayName": "sDstBlendRGB",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineSrcBlendAlphaFA",
+    "displayName": "sSrcBlendAlpha",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineDstBlendAlphaFA",
+    "displayName": "sDstBlendAlpha",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_OutlineBlendOpFA",
+    "displayName": "sBlendOpRGB",
+    "type": "Int",
+    "defaultValue": 4,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_OutlineBlendOpAlphaFA",
+    "displayName": "sBlendOpAlpha",
+    "type": "Int",
+    "defaultValue": 4,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_OutlineZClip",
+    "displayName": "sZClip",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "lilToggle"
+    ]
+  },
+  {
+    "name": "_OutlineZWrite",
+    "displayName": "sZWrite",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "lilToggle"
+    ]
+  },
+  {
+    "name": "_OutlineZTest",
+    "displayName": "sZTest",
+    "type": "Int",
+    "defaultValue": 2,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.CompareFunction)"
+    ]
+  },
+  {
+    "name": "_OutlineStencilRef",
+    "displayName": "Ref",
+    "type": "Range",
+    "range": [
+      0,
+      255
+    ],
+    "defaultValue": 0,
+    "attributes": [
+      "IntRange"
+    ]
+  },
+  {
+    "name": "_OutlineStencilReadMask",
+    "displayName": "ReadMask",
+    "type": "Range",
+    "range": [
+      0,
+      255
+    ],
+    "defaultValue": 255,
+    "attributes": [
+      "IntRange"
+    ]
+  },
+  {
+    "name": "_OutlineStencilWriteMask",
+    "displayName": "WriteMask",
+    "type": "Range",
+    "range": [
+      0,
+      255
+    ],
+    "defaultValue": 255,
+    "attributes": [
+      "IntRange"
+    ]
+  },
+  {
+    "name": "_OutlineStencilComp",
+    "displayName": "Comp",
+    "type": "Float",
+    "defaultValue": 8,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.CompareFunction)"
+    ]
+  },
+  {
+    "name": "_OutlineStencilPass",
+    "displayName": "Pass",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.StencilOp)"
+    ]
+  },
+  {
+    "name": "_OutlineStencilFail",
+    "displayName": "Fail",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.StencilOp)"
+    ]
+  },
+  {
+    "name": "_OutlineStencilZFail",
+    "displayName": "ZFail",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.StencilOp)"
+    ]
+  },
+  {
+    "name": "_OutlineOffsetFactor",
+    "displayName": "sOffsetFactor",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": []
+  },
+  {
+    "name": "_OutlineOffsetUnits",
+    "displayName": "sOffsetUnits",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": []
+  },
+  {
+    "name": "_OutlineColorMask",
+    "displayName": "sColorMask",
+    "type": "Int",
+    "defaultValue": 15,
+    "attributes": [
+      "lilColorMask"
+    ]
+  },
+  {
+    "name": "_OutlineAlphaToMask",
+    "displayName": "sAlphaToMask",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "lilToggle"
+    ]
+  },
+  {
+    "name": "_PreColor",
+    "displayName": "sColor",
+    "type": "Color",
+    "defaultValue": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "attributes": [
+      "lilHDR",
+      "MainColor"
+    ]
+  },
+  {
+    "name": "_PreOutType",
+    "displayName": "sPreOutTypes",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "lilEnum"
+    ]
+  },
+  {
+    "name": "_PreCutoff",
+    "displayName": "Pre Cutoff",
+    "type": "Range",
+    "range": [
+      -1e-3,
+      1.001
+    ],
+    "defaultValue": 0.5,
+    "attributes": []
+  },
+  {
+    "name": "_PreCull",
+    "displayName": "Cull Mode|Off|Front|Back",
+    "type": "Int",
+    "defaultValue": 2,
+    "attributes": [
+      "lilEnum"
+    ]
+  },
+  {
+    "name": "_PreSrcBlend",
+    "displayName": "sSrcBlendRGB",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreDstBlend",
+    "displayName": "sDstBlendRGB",
+    "type": "Int",
+    "defaultValue": 10,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreSrcBlendAlpha",
+    "displayName": "sSrcBlendAlpha",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreDstBlendAlpha",
+    "displayName": "sDstBlendAlpha",
+    "type": "Int",
+    "defaultValue": 10,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreBlendOp",
+    "displayName": "sBlendOpRGB",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_PreBlendOpAlpha",
+    "displayName": "sBlendOpAlpha",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_PreSrcBlendFA",
+    "displayName": "sSrcBlendRGB",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreDstBlendFA",
+    "displayName": "sDstBlendRGB",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreSrcBlendAlphaFA",
+    "displayName": "sSrcBlendAlpha",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreDstBlendAlphaFA",
+    "displayName": "sDstBlendAlpha",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendMode)"
+    ]
+  },
+  {
+    "name": "_PreBlendOpFA",
+    "displayName": "sBlendOpRGB",
+    "type": "Int",
+    "defaultValue": 4,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_PreBlendOpAlphaFA",
+    "displayName": "sBlendOpAlpha",
+    "type": "Int",
+    "defaultValue": 4,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.BlendOp)"
+    ]
+  },
+  {
+    "name": "_PreZClip",
+    "displayName": "sZClip",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "lilToggle"
+    ]
+  },
+  {
+    "name": "_PreZWrite",
+    "displayName": "sZWrite",
+    "type": "Int",
+    "defaultValue": 1,
+    "attributes": [
+      "lilToggle"
+    ]
+  },
+  {
+    "name": "_PreZTest",
+    "displayName": "sZTest",
+    "type": "Int",
+    "defaultValue": 4,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.CompareFunction)"
+    ]
+  },
+  {
+    "name": "_PreStencilRef",
+    "displayName": "Ref",
+    "type": "Range",
+    "range": [
+      0,
+      255
+    ],
+    "defaultValue": 0,
+    "attributes": [
+      "IntRange"
+    ]
+  },
+  {
+    "name": "_PreStencilReadMask",
+    "displayName": "ReadMask",
+    "type": "Range",
+    "range": [
+      0,
+      255
+    ],
+    "defaultValue": 255,
+    "attributes": [
+      "IntRange"
+    ]
+  },
+  {
+    "name": "_PreStencilWriteMask",
+    "displayName": "WriteMask",
+    "type": "Range",
+    "range": [
+      0,
+      255
+    ],
+    "defaultValue": 255,
+    "attributes": [
+      "IntRange"
+    ]
+  },
+  {
+    "name": "_PreStencilComp",
+    "displayName": "Comp",
+    "type": "Float",
+    "defaultValue": 8,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.CompareFunction)"
+    ]
+  },
+  {
+    "name": "_PreStencilPass",
+    "displayName": "Pass",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.StencilOp)"
+    ]
+  },
+  {
+    "name": "_PreStencilFail",
+    "displayName": "Fail",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.StencilOp)"
+    ]
+  },
+  {
+    "name": "_PreStencilZFail",
+    "displayName": "ZFail",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": [
+      "Enum(UnityEngine.Rendering.StencilOp)"
+    ]
+  },
+  {
+    "name": "_PreOffsetFactor",
+    "displayName": "sOffsetFactor",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": []
+  },
+  {
+    "name": "_PreOffsetUnits",
+    "displayName": "sOffsetUnits",
+    "type": "Float",
+    "defaultValue": 0,
+    "attributes": []
+  },
+  {
+    "name": "_PreColorMask",
+    "displayName": "sColorMask",
+    "type": "Int",
+    "defaultValue": 15,
+    "attributes": [
+      "lilColorMask"
+    ]
+  },
+  {
+    "name": "_PreAlphaToMask",
+    "displayName": "sAlphaToMask",
+    "type": "Int",
+    "defaultValue": 0,
+    "attributes": [
+      "lilToggle"
+    ]
+  },
+  {
     "name": "_RefractionStrength",
     "displayName": "sStrength",
     "type": "Range",
@@ -7512,257 +8049,6 @@ var LILTOON_PROPERTIES = [
     ],
     "defaultValue": 1,
     "attributes": []
-  },
-  {
-    "name": "_OutlineCull",
-    "displayName": "sCullModes",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "lilEnum"
-    ]
-  },
-  {
-    "name": "_OutlineSrcBlend",
-    "displayName": "sSrcBlendRGB",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineDstBlend",
-    "displayName": "sDstBlendRGB",
-    "type": "Int",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineSrcBlendAlpha",
-    "displayName": "sSrcBlendAlpha",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineDstBlendAlpha",
-    "displayName": "sDstBlendAlpha",
-    "type": "Int",
-    "defaultValue": 10,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineBlendOp",
-    "displayName": "sBlendOpRGB",
-    "type": "Int",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendOp)"
-    ]
-  },
-  {
-    "name": "_OutlineBlendOpAlpha",
-    "displayName": "sBlendOpAlpha",
-    "type": "Int",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendOp)"
-    ]
-  },
-  {
-    "name": "_OutlineSrcBlendFA",
-    "displayName": "sSrcBlendRGB",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineDstBlendFA",
-    "displayName": "sDstBlendRGB",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineSrcBlendAlphaFA",
-    "displayName": "sSrcBlendAlpha",
-    "type": "Int",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineDstBlendAlphaFA",
-    "displayName": "sDstBlendAlpha",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendMode)"
-    ]
-  },
-  {
-    "name": "_OutlineBlendOpFA",
-    "displayName": "sBlendOpRGB",
-    "type": "Int",
-    "defaultValue": 4,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendOp)"
-    ]
-  },
-  {
-    "name": "_OutlineBlendOpAlphaFA",
-    "displayName": "sBlendOpAlpha",
-    "type": "Int",
-    "defaultValue": 4,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.BlendOp)"
-    ]
-  },
-  {
-    "name": "_OutlineZClip",
-    "displayName": "sZClip",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "lilToggle"
-    ]
-  },
-  {
-    "name": "_OutlineZWrite",
-    "displayName": "sZWrite",
-    "type": "Int",
-    "defaultValue": 1,
-    "attributes": [
-      "lilToggle"
-    ]
-  },
-  {
-    "name": "_OutlineZTest",
-    "displayName": "sZTest",
-    "type": "Int",
-    "defaultValue": 2,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.CompareFunction)"
-    ]
-  },
-  {
-    "name": "_OutlineStencilRef",
-    "displayName": "Ref",
-    "type": "Range",
-    "range": [
-      0,
-      255
-    ],
-    "defaultValue": 0,
-    "attributes": [
-      "IntRange"
-    ]
-  },
-  {
-    "name": "_OutlineStencilReadMask",
-    "displayName": "ReadMask",
-    "type": "Range",
-    "range": [
-      0,
-      255
-    ],
-    "defaultValue": 255,
-    "attributes": [
-      "IntRange"
-    ]
-  },
-  {
-    "name": "_OutlineStencilWriteMask",
-    "displayName": "WriteMask",
-    "type": "Range",
-    "range": [
-      0,
-      255
-    ],
-    "defaultValue": 255,
-    "attributes": [
-      "IntRange"
-    ]
-  },
-  {
-    "name": "_OutlineStencilComp",
-    "displayName": "Comp",
-    "type": "Float",
-    "defaultValue": 8,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.CompareFunction)"
-    ]
-  },
-  {
-    "name": "_OutlineStencilPass",
-    "displayName": "Pass",
-    "type": "Float",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.StencilOp)"
-    ]
-  },
-  {
-    "name": "_OutlineStencilFail",
-    "displayName": "Fail",
-    "type": "Float",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.StencilOp)"
-    ]
-  },
-  {
-    "name": "_OutlineStencilZFail",
-    "displayName": "ZFail",
-    "type": "Float",
-    "defaultValue": 0,
-    "attributes": [
-      "Enum(UnityEngine.Rendering.StencilOp)"
-    ]
-  },
-  {
-    "name": "_OutlineOffsetFactor",
-    "displayName": "sOffsetFactor",
-    "type": "Float",
-    "defaultValue": 0,
-    "attributes": []
-  },
-  {
-    "name": "_OutlineOffsetUnits",
-    "displayName": "sOffsetUnits",
-    "type": "Float",
-    "defaultValue": 0,
-    "attributes": []
-  },
-  {
-    "name": "_OutlineColorMask",
-    "displayName": "sColorMask",
-    "type": "Int",
-    "defaultValue": 15,
-    "attributes": [
-      "lilColorMask"
-    ]
-  },
-  {
-    "name": "_OutlineAlphaToMask",
-    "displayName": "sAlphaToMask",
-    "type": "Int",
-    "defaultValue": 0,
-    "attributes": [
-      "lilToggle"
-    ]
   }
 ];
 

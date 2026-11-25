@@ -1,9 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { BackSide, DataTexture, Vector4 } from "three";
+import { LILTOON_PROPERTIES } from "../../src/generated/properties.js";
 import { LilToonMaterial } from "../../src/material/LilToonMaterial.js";
 import { syncPassMaterial } from "../../src/renderer/syncPassMaterial.js";
 
 describe("pass material synchronization", () => {
+	it("declares alpha-to-coverage for the transparent pre-pass", () => {
+		expect(
+			LILTOON_PROPERTIES.find(({ name }) => name === "_PreAlphaToMask"),
+		).toMatchObject({ type: "Int", defaultValue: 0 });
+		const source = new LilToonMaterial({
+			renderMode: "transparent",
+			transparencyMode: "two-pass",
+			properties: { _AlphaToMask: 0, _PreAlphaToMask: 1 },
+		});
+		const target = new LilToonMaterial({
+			renderMode: "transparent",
+			transparencyMode: "two-pass",
+			pass: "transparent-pre",
+		});
+		syncPassMaterial(source, target);
+		expect(source.alphaToCoverage).toBe(false);
+		expect(target.alphaToCoverage).toBe(true);
+		source.dispose();
+		target.dispose();
+	});
+
 	it("leaves unchanged programs and render state alone, but observes mutable values", () => {
 		const source = new LilToonMaterial({
 			renderMode: "transparent",
